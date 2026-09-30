@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest } from "../lib/razorpay";
@@ -19,6 +19,7 @@ const StatusBadge = ({ status }) => {
     pending: "bg-yellow-100 text-yellow-800",
     approved: "bg-emerald-100 text-emerald-800",
     rejected: "bg-red-100 text-red-800",
+    processing: "bg-blue-100 text-blue-800",
     won: "bg-orange-100 text-orange-800",
     paid: "bg-emerald-100 text-emerald-800",
     open: "bg-emerald-100 text-emerald-800",
@@ -45,6 +46,7 @@ export default function UserApp() {
   const [config, setConfig] = useState({ admin_upi_id: "" });
   const [joinContest, setJoinContest] = useState(null);
   const [wdOpen, setWdOpen] = useState(false);
+  const [justJoined, setJustJoined] = useState(null);
 
   const loadAll = async () => {
     try {
@@ -120,6 +122,7 @@ export default function UserApp() {
           </TabsList>
 
           <TabsContent value="contests" className="mt-6">
+            {justJoined && <SuccessBanner entry={justJoined} onClose={() => setJustJoined(null)} />}
             <WinnersBoard winners={winners} />
             {contests.length === 0 ? (
               <EmptyState title="No contests yet" body="The admin hasn't dropped any contest. Check back soon." />
@@ -196,7 +199,8 @@ export default function UserApp() {
                       <div key={w.id} className="p-5 flex items-center justify-between" data-testid={`withdrawal-row-${w.id}`}>
                         <div>
                           <div className="font-heading font-bold text-zinc-950 tabular">{money(w.amount)}</div>
-                          <div className="text-xs text-zinc-500 mt-0.5">to {w.upi_id} · {new Date(w.created_at).toLocaleString()}</div>
+                          <div className="text-xs text-zinc-500 mt-0.5">to {w.upi_id} · {new Date(w.created_at).toLocaleString()}{w.payout_utr ? ` · UTR ${w.payout_utr}` : ""}</div>
+                          {w.status === "rejected" && w.decision_note && <div className="text-xs text-red-600 mt-0.5" data-testid={`wd-note-${w.id}`}>{w.decision_note}</div>}
                         </div>
                         <StatusBadge status={w.status} />
                       </div>
@@ -210,7 +214,7 @@ export default function UserApp() {
         </Tabs>
       </main>
 
-      <JoinDialog contest={joinContest} onClose={() => setJoinContest(null)} config={config} onDone={loadAll} />
+      <JoinDialog contest={joinContest} onClose={() => setJoinContest(null)} config={config} onDone={loadAll} onPaid={setJustJoined} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} />
     </div>
   );
@@ -293,7 +297,7 @@ function ContestCard({ contest, onJoin }) {
   );
 }
 
-function JoinDialog({ contest, onClose, config, onDone }) {
+function JoinDialog({ contest, onClose, config, onDone, onPaid }) {
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -313,9 +317,10 @@ function JoinDialog({ contest, onClose, config, onDone }) {
   const payOnline = async () => {
     setPaying(true);
     try {
-      await payForContest(contest);
-      toast.success("Payment successful! You're in — open the contest link.");
+      const entry = await payForContest(contest);
+      toast.success("Payment successful! You're in.");
       onClose();
+      onPaid?.(entry);
       onDone();
     } catch (e) {
       const msg = e?.response?.data?.detail || e?.message || "Payment failed";
@@ -468,6 +473,31 @@ function WithdrawDialog({ open, onClose, balance, onDone }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SuccessBanner({ entry, onClose }) {
+  return (
+    <div className="relative overflow-hidden mb-6 rounded-lg border border-emerald-500 bg-emerald-600 text-white p-6 sm:p-7 animate-in fade-in slide-in-from-top-2 duration-500" data-testid="success-banner">
+      <Confetti size={140} weight="duotone" className="absolute -right-6 -top-8 text-emerald-300/40 pointer-events-none" />
+      <button type="button" onClick={onClose} className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-white/15" aria-label="Dismiss" data-testid="success-banner-close"><X size={18} weight="bold" /></button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-100">
+            <ShieldCheck size={16} weight="fill" /> Payment confirmed · {entry.razorpay_payment_id}
+          </div>
+          <h2 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tighter mt-2">You're in! 🎉</h2>
+          <p className="text-emerald-50 mt-1">Your spot in <b>{entry.contest_title}</b> is locked. Head over and set up your team before the match starts.</p>
+        </div>
+        {entry.external_link && (
+          <a href={entry.external_link} target="_blank" rel="noopener noreferrer"
+            className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-white text-emerald-800 hover:bg-emerald-50 font-extrabold px-6 py-3 active:scale-95 transition-transform"
+            data-testid="success-banner-play-link">
+            <ArrowSquareOut size={18} weight="bold" /> Open contest
+          </a>
+        )}
+      </div>
+    </div>
   );
 }
 

@@ -44,6 +44,9 @@ RZP_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RZP_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RZP_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
 rzp_client = razorpay.Client(auth=(RZP_KEY_ID, RZP_KEY_SECRET)) if RZP_KEY_ID and RZP_KEY_SECRET else None
+RZPX_ACCOUNT_NUMBER = os.environ.get("RAZORPAYX_ACCOUNT_NUMBER", "").strip()
+RZPX_API = "https://api.razorpay.com/v1"
+payouts_enabled = bool(rzp_client and RZPX_ACCOUNT_NUMBER)
 
 
 def init_storage(force: bool = False):
@@ -423,7 +426,7 @@ async def create_entry(
 async def payments_config(user=Depends(get_current_user)):
     s = await get_payment_settings()
     return {"razorpay_enabled": rzp_client is not None, "key_id": RZP_KEY_ID if rzp_client else None,
-            "manual_upi_enabled": s.get("manual_upi_enabled", True)}
+            "manual_upi_enabled": s.get("manual_upi_enabled", True), "payouts_enabled": payouts_enabled}
 
 
 @api_router.post("/payments/razorpay/order")
@@ -445,7 +448,7 @@ async def rzp_create_order(body: RzpOrderBody, user=Depends(get_current_user)):
         })
     except Exception as e:
         logger.exception("Razorpay order create failed")
-        raise HTTPException(status_code=502, detail=f"Payment gateway error: {e}")
+        raise HTTPException(status_code=400, detail=f"Payment gateway error: {e}")
     await db.payment_orders.insert_one({
         "id": order_ref,
         "razorpay_order_id": order["id"],
@@ -522,18 +525,94 @@ async def rzp_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
     return entry
 
 
+PAYOUT_FINAL_OK = {"processed"}
+PAYOUT_FINAL_FAIL = {"reversed", "failed", "rejected", "cancelled"}
+
+
+async def apply_payout_status(w: dict, payout: dict) -> dict:
+    ps = payout.get("status", "")
+    upd = {"payout_status": ps, "payout_utr": payout.get("utr"), "payout_synced_at": now_iso()}
+    if ps in PAYOUT_FINAL_OK and w["status"] != "paid":
+        upd.update({"status": "paid", "decided_at": now_iso(), "decision_note": f"Paid via RazorpayX payout {payout['id']}"})
+    elif ps in PAYOUT_FINAL_FAIL and w["status"] not in ("rejected", "paid"):
+        reason = payout.get("failure_reason") or (payout.get("status_details") or {}).get("description") or ps
+        await db.users.update_one({"id": w["user_id"]}, {"$inc": {"wallet_balance": w["amount"]}})
+        upd.update({"status": "rejected", "decided_at": now_iso(), "decision_note": f"Payout {ps}: {reason}. Amount refunded to wallet."})
+    elif ps and ps not in PAYOUT_FINAL_OK | PAYOUT_FINAL_FAIL and w["status"] == "pending":
+        upd["status"] = "processing"
+    await db.withdrawals.update_one({"id": w["id"]}, {"$set": upd})
+    return await db.withdrawals.find_one({"id": w["id"]}, {"_id": 0})
+
+
+def rzpx_request(method: str, path: str, **kwargs) -> dict:
+    resp = requests.request(method, f"{RZPX_API}{path}", auth=(RZP_KEY_ID, RZP_KEY_SECRET), timeout=30, **kwargs)
+    data = resp.json() if resp.content else {}
+    if resp.status_code >= 400:
+        desc = (data.get("error") or {}).get("description") or resp.text[:200]
+        if "not found on the server" in desc.lower():
+            desc = "RazorpayX is not activated on this Razorpay account. Activate RazorpayX and set the account number."
+        raise HTTPException(status_code=400, detail=f"RazorpayX: {desc}")
+    return data
+
+
+@api_router.post("/withdrawals/{wid}/payout")
+async def payout_withdrawal(wid: str, admin=Depends(require_admin)):
+    if not payouts_enabled:
+        raise HTTPException(status_code=503, detail="Auto payouts not configured (RAZORPAYX_ACCOUNT_NUMBER missing)")
+    w = await db.withdrawals.find_one({"id": wid}, {"_id": 0})
+    if not w:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    if w["status"] != "pending":
+        raise HTTPException(status_code=400, detail=f"Already {w['status']}")
+    body = {
+        "account_number": RZPX_ACCOUNT_NUMBER,
+        "amount": int(round(float(w["amount"]) * 100)),
+        "currency": "INR",
+        "mode": "UPI",
+        "purpose": "payout",
+        "fund_account": {
+            "account_type": "vpa",
+            "vpa": {"address": w["upi_id"]},
+            "contact": {"name": w["user_name"], "contact": w["user_mobile"], "type": "customer", "reference_id": w["user_id"][:40]},
+        },
+        "queue_if_low_balance": True,
+        "reference_id": wid[:40],
+        "narration": "PitchPlay winnings",
+    }
+    payout = rzpx_request("POST", "/payouts", json=body, headers={"X-Payout-Idempotency": wid})
+    await db.withdrawals.update_one({"id": wid}, {"$set": {"payout_id": payout["id"], "payout_method": "razorpayx", "payout_requested_at": now_iso(), "payout_by": admin["id"]}})
+    w["payout_id"] = payout["id"]
+    return await apply_payout_status(w, payout)
+
+
+@api_router.post("/withdrawals/{wid}/payout/sync")
+async def sync_payout(wid: str, admin=Depends(require_admin)):
+    w = await db.withdrawals.find_one({"id": wid}, {"_id": 0})
+    if not w or not w.get("payout_id"):
+        raise HTTPException(status_code=404, detail="No payout for this withdrawal")
+    payout = rzpx_request("GET", f"/payouts/{w['payout_id']}")
+    return await apply_payout_status(w, payout)
+
+
+def _sig_ok(raw: bytes, signature: str, secret: str) -> bool:
+    try:
+        rzp_client.utility.verify_webhook_signature(raw.decode(), signature, secret)
+        return True
+    except razorpay.errors.SignatureVerificationError:
+        return False
+
+
 @api_router.post("/payments/razorpay/webhook")
 async def rzp_webhook(request: Request):
     if not rzp_client or not RZP_WEBHOOK_SECRET:
         raise HTTPException(status_code=503, detail="Webhook not configured")
     raw = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
-    try:
-        rzp_client.utility.verify_webhook_signature(raw.decode(), signature, RZP_WEBHOOK_SECRET)
-    except razorpay.errors.SignatureVerificationError:
+    secrets_to_try = [s for s in (RZP_WEBHOOK_SECRET, os.environ.get("RAZORPAYX_WEBHOOK_SECRET", "")) if s]
+    if not any(_sig_ok(raw, signature, s) for s in secrets_to_try):
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
     payload = json.loads(raw)
-    event = payload.get("event")
+    event = payload.get("event") or ""
     pay = (payload.get("payload", {}).get("payment", {}) or {}).get("entity", {}) or {}
     if event in ("payment.captured", "order.paid") and pay.get("order_id"):
         order = await db.payment_orders.find_one({"razorpay_order_id": pay["order_id"]})
@@ -544,6 +623,12 @@ async def rzp_webhook(request: Request):
             {"razorpay_order_id": pay["order_id"], "status": "created"},
             {"$set": {"status": "failed", "failure_reason": pay.get("error_description")}},
         )
+    elif event.startswith("payout."):
+        payout = (payload.get("payload", {}).get("payout", {}) or {}).get("entity", {}) or {}
+        if payout.get("id"):
+            w = await db.withdrawals.find_one({"payout_id": payout["id"]}, {"_id": 0})
+            if w:
+                await apply_payout_status(w, payout)
     return {"ok": True}
 
 

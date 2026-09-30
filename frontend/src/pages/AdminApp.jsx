@@ -21,6 +21,7 @@ const StatusBadge = ({ status }) => {
     pending: "bg-yellow-100 text-yellow-800",
     approved: "bg-emerald-100 text-emerald-800",
     rejected: "bg-red-100 text-red-800",
+    processing: "bg-blue-100 text-blue-800",
     won: "bg-orange-100 text-orange-800",
     paid: "bg-emerald-100 text-emerald-800",
     open: "bg-emerald-100 text-emerald-800",
@@ -402,8 +403,10 @@ export function ScreenshotViewer({ path, testId = "screenshot-img", className = 
 
 function WithdrawalsPanel() {
   const [items, setItems] = useState([]);
+  const [payoutsOn, setPayoutsOn] = useState(false);
+  const [busyId, setBusyId] = useState(null);
   const load = () => api.get("/withdrawals").then(r => setItems(r.data));
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); api.get("/payments/config").then(r => setPayoutsOn(!!r.data.payouts_enabled)); }, []);
   const decide = async (w, action) => {
     try {
       await api.post(`/withdrawals/${w.id}/decision`, { action });
@@ -411,10 +414,28 @@ function WithdrawalsPanel() {
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
   };
+  const payout = async (w) => {
+    setBusyId(w.id);
+    try {
+      const r = await api.post(`/withdrawals/${w.id}/payout`);
+      toast.success(r.data.status === "paid" ? `Paid ${money(w.amount)} to ${w.upi_id}` : `Payout ${r.data.payout_status} — will auto-update`);
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Payout failed"); } finally { setBusyId(null); }
+  };
+  const sync = async (w) => {
+    setBusyId(w.id);
+    try { const r = await api.post(`/withdrawals/${w.id}/payout/sync`); toast.success(`Payout status: ${r.data.payout_status}`); load(); }
+    catch (e) { toast.error(e?.response?.data?.detail || "Sync failed"); } finally { setBusyId(null); }
+  };
   return (
     <div>
       <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Withdrawals</h1>
-      <p className="text-zinc-500 mt-1">Pay the UPI, then mark as paid. Rejecting refunds the user's wallet.</p>
+      <p className="text-zinc-500 mt-1">{payoutsOn ? "Send winnings straight to the user's UPI with one click via RazorpayX, or mark as paid manually." : "Pay the UPI, then mark as paid. Rejecting refunds the user's wallet."}</p>
+      {!payoutsOn && (
+        <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-900 text-sm px-4 py-3" data-testid="payouts-not-configured">
+          <b>Auto payouts off.</b> Activate RazorpayX on your Razorpay account and add <code>RAZORPAYX_ACCOUNT_NUMBER</code> to the backend environment to pay winners automatically.
+        </div>
+      )}
       <div className="bg-white border border-zinc-200 rounded-lg mt-6 overflow-hidden">
         <Table>
           <TableHeader>
@@ -437,13 +458,24 @@ function WithdrawalsPanel() {
                 </TableCell>
                 <TableCell className="font-heading font-extrabold tabular">{money(w.amount)}</TableCell>
                 <TableCell className="tabular">{w.upi_id}</TableCell>
-                <TableCell><StatusBadge status={w.status} /></TableCell>
+                <TableCell>
+                  <StatusBadge status={w.status} />
+                  {w.payout_id && <div className="text-[11px] text-zinc-500 mt-1 tabular" data-testid={`wd-payout-info-${w.id}`}>RazorpayX · {w.payout_status}{w.payout_utr ? ` · UTR ${w.payout_utr}` : ""}</div>}
+                </TableCell>
                 <TableCell className="text-right">
                   {w.status === "pending" && (
                     <div className="flex justify-end gap-2">
+                      {payoutsOn && (
+                        <Button size="sm" disabled={busyId === w.id} onClick={() => payout(w)} className="bg-zinc-950 hover:bg-zinc-800 text-emerald-300 font-bold" data-testid={`payout-wd-${w.id}`}>
+                          <Lightning size={14} weight="fill" className="mr-1" />{busyId === w.id ? "Sending..." : "Pay via Razorpay"}
+                        </Button>
+                      )}
                       <Button size="sm" onClick={() => decide(w, "approve")} className="bg-emerald-600 hover:bg-emerald-700" data-testid={`approve-wd-${w.id}`}><Check size={14} className="mr-1" />Paid</Button>
                       <Button size="sm" variant="destructive" onClick={() => decide(w, "reject")} data-testid={`reject-wd-${w.id}`}><X size={14} /></Button>
                     </div>
+                  )}
+                  {w.status === "processing" && (
+                    <Button size="sm" variant="outline" disabled={busyId === w.id} onClick={() => sync(w)} data-testid={`sync-wd-${w.id}`}>{busyId === w.id ? "Checking..." : "Check status"}</Button>
                   )}
                 </TableCell>
               </TableRow>
