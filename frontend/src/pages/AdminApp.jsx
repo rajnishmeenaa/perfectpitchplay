@@ -433,7 +433,7 @@ function WithdrawalsPanel() {
       <p className="text-zinc-500 mt-1">{payoutsOn ? "Send winnings straight to the user's UPI with one click via RazorpayX, or mark as paid manually." : "Pay the UPI, then mark as paid. Rejecting refunds the user's wallet."}</p>
       {!payoutsOn && (
         <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-900 text-sm px-4 py-3" data-testid="payouts-not-configured">
-          <b>Auto payouts off.</b> Activate RazorpayX on your Razorpay account and add <code>RAZORPAYX_ACCOUNT_NUMBER</code> to the backend environment to pay winners automatically.
+          <b>Auto payouts off.</b> Activate RazorpayX on your Razorpay account and add your <b>RazorpayX account number</b> in <b>Payment settings</b> to pay winners automatically.
         </div>
       )}
       <div className="bg-white border border-zinc-200 rounded-lg mt-6 overflow-hidden">
@@ -621,11 +621,16 @@ function WalletDialog({ user, onClose, onDone }) {
 }
 
 function PaymentSettingsPanel() {
-  const [form, setForm] = useState({ upi_id: "", payee_name: "", instructions: "", manual_upi_enabled: true });
+  const [form, setForm] = useState({ upi_id: "", payee_name: "", instructions: "", manual_upi_enabled: true, razorpayx_account_number: "" });
   const [qrPath, setQrPath] = useState(null);
   const [busy, setBusy] = useState(false);
   const [rzp, setRzp] = useState(null);
-  const apply = (d) => { setForm({ upi_id: d.upi_id || "", payee_name: d.payee_name || "", instructions: d.instructions || "", manual_upi_enabled: d.manual_upi_enabled !== false }); setQrPath(d.qr_path || null); };
+  const [payoutsEnabled, setPayoutsEnabled] = useState(false);
+  const apply = (d) => {
+    setForm({ upi_id: d.upi_id || "", payee_name: d.payee_name || "", instructions: d.instructions || "", manual_upi_enabled: d.manual_upi_enabled !== false, razorpayx_account_number: d.razorpayx_account_number || "" });
+    setQrPath(d.qr_path || null);
+    setPayoutsEnabled(!!d.razorpayx_enabled);
+  };
   useEffect(() => {
     api.get("/admin/payment-settings").then(r => apply(r.data));
     api.get("/payments/config").then(r => setRzp(r.data));
@@ -675,6 +680,16 @@ function PaymentSettingsPanel() {
           <Field label="UPI ID"><Input value={form.upi_id} onChange={(e) => setForm({ ...form, upi_id: e.target.value })} placeholder="yourname@upi" data-testid="settings-upi-input" /></Field>
           <Field label="Payee name"><Input value={form.payee_name} onChange={(e) => setForm({ ...form, payee_name: e.target.value })} data-testid="settings-payee-input" /></Field>
           <Field label="Instructions for users"><Textarea rows={3} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} placeholder="e.g. Add your mobile number in payment remark" data-testid="settings-instructions-input" /></Field>
+          <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 grid gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-bold text-zinc-900">RazorpayX auto payouts</div>
+              <span className={`inline-flex items-center gap-1 rounded-full text-[11px] font-bold px-2.5 py-0.5 ${payoutsEnabled ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800"}`} data-testid="payouts-status-badge">
+                {payoutsEnabled ? "Active" : "Not configured"}
+              </span>
+            </div>
+            <div className="text-xs text-zinc-500">Enter your RazorpayX account number to pay winners to their UPI with one click. Find it in RazorpayX Dashboard → Account Details (a 10–16 digit virtual account number).</div>
+            <Input value={form.razorpayx_account_number} onChange={(e) => setForm({ ...form, razorpayx_account_number: e.target.value })} placeholder="e.g. 2323230012345678" className="tabular" data-testid="settings-rzpx-account-input" />
+          </div>
           <Button onClick={save} className="bg-emerald-600 hover:bg-emerald-700 font-bold w-fit" data-testid="settings-save-btn">Save settings</Button>
         </div>
         <div className="bg-white border border-zinc-200 rounded-lg p-6 flex flex-col items-center justify-center gap-3">

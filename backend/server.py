@@ -221,6 +221,7 @@ class PaymentSettingsBody(BaseModel):
     payee_name: str = Field(default="", max_length=60)
     instructions: str = Field(default="", max_length=500)
     manual_upi_enabled: bool = True
+    razorpayx_account_number: str = Field(default="", max_length=40)
 
 
 class RzpOrderBody(BaseModel):
@@ -238,6 +239,21 @@ async def get_payment_settings() -> dict:
     if not s:
         s = {"key": "payment", "upi_id": ADMIN_UPI_ID, "payee_name": "Admin", "instructions": ""}
     s.setdefault("manual_upi_enabled", True)
+    s.setdefault("razorpayx_account_number", RZPX_ACCOUNT_NUMBER)
+    return s
+
+
+async def resolve_rzpx_account() -> str:
+    s = await get_payment_settings()
+    return (s.get("razorpayx_account_number") or "").strip() or RZPX_ACCOUNT_NUMBER
+
+
+async def payment_settings_admin_view() -> dict:
+    s = await get_payment_settings()
+    acct = (s.get("razorpayx_account_number") or "").strip() or RZPX_ACCOUNT_NUMBER
+    s["razorpayx_account_number"] = acct
+    s["razorpay_connected"] = rzp_client is not None
+    s["razorpayx_enabled"] = bool(rzp_client and acct)
     return s
 
 
@@ -496,8 +512,9 @@ async def create_entry(
 @api_router.get("/payments/config")
 async def payments_config(user=Depends(get_current_user)):
     s = await get_payment_settings()
+    acct = (s.get("razorpayx_account_number") or "").strip() or RZPX_ACCOUNT_NUMBER
     return {"razorpay_enabled": rzp_client is not None, "key_id": RZP_KEY_ID if rzp_client else None,
-            "manual_upi_enabled": s.get("manual_upi_enabled", True), "payouts_enabled": payouts_enabled}
+            "manual_upi_enabled": s.get("manual_upi_enabled", True), "payouts_enabled": bool(rzp_client and acct)}
 
 
 @api_router.post("/payments/razorpay/order")
@@ -628,15 +645,16 @@ def rzpx_request(method: str, path: str, **kwargs) -> dict:
 
 @api_router.post("/withdrawals/{wid}/payout")
 async def payout_withdrawal(wid: str, admin=Depends(require_admin)):
-    if not payouts_enabled:
-        raise HTTPException(status_code=503, detail="Auto payouts not configured (RAZORPAYX_ACCOUNT_NUMBER missing)")
+    acct = await resolve_rzpx_account()
+    if not rzp_client or not acct:
+        raise HTTPException(status_code=503, detail="Auto payouts not configured. Add your RazorpayX account number in Payment settings.")
     w = await db.withdrawals.find_one({"id": wid}, {"_id": 0})
     if not w:
         raise HTTPException(status_code=404, detail="Withdrawal not found")
     if w["status"] != "pending":
         raise HTTPException(status_code=400, detail=f"Already {w['status']}")
     body = {
-        "account_number": RZPX_ACCOUNT_NUMBER,
+        "account_number": acct,
         "amount": int(round(float(w["amount"]) * 100)),
         "currency": "INR",
         "mode": "UPI",
@@ -795,15 +813,16 @@ async def winners_board(user=Depends(get_current_user)):
 
 @api_router.get("/admin/payment-settings")
 async def admin_get_payment_settings(admin=Depends(require_admin)):
-    return await get_payment_settings()
+    return await payment_settings_admin_view()
 
 
 @api_router.put("/admin/payment-settings")
 async def admin_put_payment_settings(body: PaymentSettingsBody, admin=Depends(require_admin)):
     doc = {"key": "payment", "upi_id": body.upi_id.strip(), "payee_name": body.payee_name.strip(),
-           "instructions": body.instructions.strip(), "manual_upi_enabled": body.manual_upi_enabled, "updated_at": now_iso()}
+           "instructions": body.instructions.strip(), "manual_upi_enabled": body.manual_upi_enabled,
+           "razorpayx_account_number": body.razorpayx_account_number.strip(), "updated_at": now_iso()}
     await db.settings.update_one({"key": "payment"}, {"$set": doc}, upsert=True)
-    return await get_payment_settings()
+    return await payment_settings_admin_view()
 
 
 @api_router.post("/admin/payment-settings/qr")
