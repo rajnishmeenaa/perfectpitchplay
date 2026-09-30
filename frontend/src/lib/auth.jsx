@@ -8,6 +8,11 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    // CRITICAL: returning from Google OAuth — let AuthCallback exchange session_id first
+    if (window.location.hash?.includes("session_id=")) {
+      setLoading(false);
+      return;
+    }
     if (!getToken()) {
       setUser(null);
       setLoading(false);
@@ -33,6 +38,19 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  const loginWithGoogleSession = async (sessionId) => {
+    const { data } = await api.post("/auth/google/session", { session_id: sessionId });
+    setToken(data.token);
+    setUser(data.user);
+    return data.user;
+  };
+
+  const setMobile = async (mobile) => {
+    const { data } = await api.post("/auth/set-mobile", { mobile });
+    setUser((u) => (u ? { ...u, mobile: data.mobile, needs_mobile: false } : u));
+    return data.mobile;
+  };
+
   const signup = async (name, mobile, password) => {
     const { data } = await api.post("/auth/signup", { name, mobile, password });
     setToken(data.token);
@@ -46,7 +64,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, refresh, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogleSession, setMobile, logout, refresh, setUser }}>
       {children}
     </AuthContext.Provider>
   );

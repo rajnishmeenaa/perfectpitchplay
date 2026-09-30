@@ -35,8 +35,80 @@ const StatusBadge = ({ status }) => {
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 
+function MobileGate({ name, onSaved, setMobile, onLogout }) {
+  const [mobile, setMobileVal] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const save = async (e) => {
+    e.preventDefault();
+    const val = mobile.trim();
+    if (!/^[0-9]{6,15}$/.test(val)) {
+      toast.error("Enter a valid mobile number (digits only)");
+      return;
+    }
+    setBusy(true);
+    try {
+      await setMobile(val);
+      toast.success("Mobile saved! You're all set.");
+      onSaved && onSaved();
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Couldn't save mobile");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-100 flex items-center justify-center px-6" data-testid="mobile-gate">
+      <div className="w-full max-w-md bg-white border border-zinc-200 rounded-2xl p-8">
+        <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950">
+          <CricketBall weight="fill" className="text-emerald-600" size={26} />
+          PitchPlay
+        </div>
+        <h1 className="mt-6 font-heading text-2xl font-extrabold tracking-tight text-zinc-950">
+          One last step, {name?.split(" ")[0]}
+        </h1>
+        <p className="text-sm text-zinc-500 mt-2 leading-relaxed">
+          Add your mobile number so the admin can reach you and your contest winnings land in the right UPI.
+        </p>
+        <form className="mt-6 space-y-4" onSubmit={save}>
+          <div>
+            <Label htmlFor="gate-mobile" className="text-xs font-bold uppercase tracking-widest text-zinc-500">Mobile number</Label>
+            <Input
+              id="gate-mobile"
+              inputMode="numeric"
+              pattern="[0-9]{6,15}"
+              value={mobile}
+              onChange={(e) => setMobileVal(e.target.value)}
+              placeholder="9876543210"
+              className="mt-2 border-zinc-200 focus-visible:ring-emerald-500 tabular"
+              data-testid="gate-mobile-input"
+              required
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={busy}
+            className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 font-bold text-base rounded-md active:scale-[0.98] transition-transform"
+            data-testid="gate-mobile-submit"
+          >
+            {busy ? "Saving..." : "Enter contest lobby"}
+          </Button>
+        </form>
+        <button
+          onClick={onLogout}
+          className="mt-4 w-full text-center text-xs font-semibold text-zinc-400 hover:text-red-600 transition-colors"
+          data-testid="gate-logout-btn"
+        >
+          Sign out
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function UserApp() {
-  const { user, logout, setUser } = useAuth();
+  const { user, logout, setUser, setMobile } = useAuth();
   const navigate = useNavigate();
   const [contests, setContests] = useState([]);
   const [entries, setEntries] = useState([]);
@@ -74,6 +146,10 @@ export default function UserApp() {
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, []);
 
   const doLogout = () => { logout(); navigate("/"); };
+
+  if (user && !user.mobile) {
+    return <MobileGate name={user.name} onSaved={loadAll} setMobile={setMobile} onLogout={doLogout} />;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-100" data-testid="user-app">

@@ -156,6 +156,14 @@ class LoginBody(BaseModel):
     password: str
 
 
+class GoogleSessionBody(BaseModel):
+    session_id: str
+
+
+class SetMobileBody(BaseModel):
+    mobile: str = Field(min_length=6, max_length=15)
+
+
 class ContestCreate(BaseModel):
     title: str
     description: str = ""
@@ -304,10 +312,73 @@ async def me(user=Depends(get_current_user)):
     return {
         "id": user["id"],
         "name": user["name"],
-        "mobile": user["mobile"],
+        "mobile": user.get("mobile"),
+        "email": user.get("email"),
+        "picture": user.get("picture"),
         "role": user["role"],
         "wallet_balance": user.get("wallet_balance", 0.0),
+        "needs_mobile": not user.get("mobile"),
     }
+
+
+EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
+
+
+@api_router.post("/auth/google/session")
+async def google_session(body: GoogleSessionBody):
+    try:
+        r = requests.get(EMERGENT_SESSION_URL, headers={"X-Session-ID": body.session_id}, timeout=15)
+    except requests.RequestException:
+        raise HTTPException(status_code=502, detail="Could not reach Google sign-in service")
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Google sign-in failed or session expired")
+    data = r.json()
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Google account has no email")
+    user = await db.users.find_one({"email": email}, {"_id": 0})
+    if not user:
+        user_id = str(uuid.uuid4())
+        user = {
+            "id": user_id,
+            "name": (data.get("name") or email.split("@")[0]).strip(),
+            "email": email,
+            "mobile": None,
+            "picture": data.get("picture"),
+            "auth_provider": "google",
+            "role": "user",
+            "wallet_balance": 0.0,
+            "created_at": now_iso(),
+        }
+        await db.users.insert_one(dict(user))
+    if user.get("blocked"):
+        raise HTTPException(status_code=403, detail="Your account is blocked. Contact admin.")
+    token = create_token(user["id"], user.get("role", "user"))
+    return {
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "name": user["name"],
+            "mobile": user.get("mobile"),
+            "email": user.get("email"),
+            "picture": user.get("picture"),
+            "role": user.get("role", "user"),
+            "wallet_balance": user.get("wallet_balance", 0.0),
+            "needs_mobile": not user.get("mobile"),
+        },
+    }
+
+
+@api_router.post("/auth/set-mobile")
+async def set_mobile(body: SetMobileBody, user=Depends(get_current_user)):
+    mobile = body.mobile.strip()
+    if not mobile.isdigit():
+        raise HTTPException(status_code=400, detail="Enter a valid mobile number")
+    clash = await db.users.find_one({"mobile": mobile, "id": {"$ne": user["id"]}})
+    if clash:
+        raise HTTPException(status_code=400, detail="Mobile already registered")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"mobile": mobile}})
+    return {"ok": True, "mobile": mobile}
 
 
 # ---------- Contests ----------

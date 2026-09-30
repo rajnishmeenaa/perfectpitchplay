@@ -5,7 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-import { Baseball as CricketBall, ArrowRight, ShieldCheck, Lightning, Trophy } from "@phosphor-icons/react";
+import { Baseball as CricketBall, ArrowRight, ShieldCheck, Lightning, Trophy, GoogleLogo } from "@phosphor-icons/react";
 
 const HERO = "https://images.pexels.com/photos/36741131/pexels-photo-36741131.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 
@@ -36,6 +36,12 @@ export default function Landing() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const googleSignIn = () => {
+    // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
+    const redirectUrl = window.location.origin + "/app";
+    window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
   };
 
   return (
@@ -176,6 +182,25 @@ export default function Landing() {
                 Only your mobile is stored. Visible only to the admin.
               </p>
             </form>
+
+            <div className="mt-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-zinc-200" />
+              <span className="text-xs font-bold uppercase tracking-widest text-zinc-400">or</span>
+              <div className="h-px flex-1 bg-zinc-200" />
+            </div>
+
+            <button
+              type="button"
+              onClick={googleSignIn}
+              className="mt-5 w-full h-11 flex items-center justify-center gap-3 rounded-md border border-zinc-300 bg-white text-zinc-800 font-bold hover:bg-zinc-50 active:scale-[0.98] transition-transform"
+              data-testid="google-signin-btn"
+            >
+              <GoogleLogo size={20} weight="bold" className="text-emerald-600" />
+              Continue with Google
+            </button>
+            <p className="mt-3 text-xs text-zinc-400 text-center">
+              We'll ask for your mobile once, so payouts reach you.
+            </p>
           </div>
         </div>
       </section>
