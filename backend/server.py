@@ -1,5 +1,7 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Header, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Header, Query, Request
 from fastapi.responses import Response
+import razorpay
+import json
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -36,6 +38,12 @@ STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = os.environ.get("APP_NAME", "fantasy-contest")
 storage_key: Optional[str] = None
+
+# Razorpay
+RZP_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
+RZP_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
+RZP_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
+rzp_client = razorpay.Client(auth=(RZP_KEY_ID, RZP_KEY_SECRET)) if RZP_KEY_ID and RZP_KEY_SECRET else None
 
 
 def init_storage(force: bool = False):
@@ -201,13 +209,48 @@ class PaymentSettingsBody(BaseModel):
     upi_id: str = Field(min_length=3, max_length=100)
     payee_name: str = Field(default="", max_length=60)
     instructions: str = Field(default="", max_length=500)
+    manual_upi_enabled: bool = True
+
+
+class RzpOrderBody(BaseModel):
+    contest_id: str
+
+
+class RzpVerifyBody(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
 
 
 async def get_payment_settings() -> dict:
     s = await db.settings.find_one({"key": "payment"}, {"_id": 0})
     if not s:
         s = {"key": "payment", "upi_id": ADMIN_UPI_ID, "payee_name": "Admin", "instructions": ""}
+    s.setdefault("manual_upi_enabled", True)
     return s
+
+
+async def get_joinable_contest(contest_id: str, user: dict) -> dict:
+    if user["role"] == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot join contests")
+    contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    if contest.get("status") != "open":
+        raise HTTPException(status_code=400, detail="Contest not open")
+    mt = contest.get("match_time")
+    if mt:
+        try:
+            if datetime.fromisoformat(mt.replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+                raise HTTPException(status_code=400, detail="Entries closed: match already started")
+        except ValueError:
+            pass
+    existing = await db.entries.find_one(
+        {"contest_id": contest_id, "user_id": user["id"], "status": {"$in": ["pending", "approved", "won"]}}
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="You already have an entry for this contest")
+    return contest
 
 
 # ---------- Auth ----------
@@ -333,26 +376,10 @@ async def create_entry(
     screenshot: UploadFile = File(...),
     user=Depends(get_current_user),
 ):
-    if user["role"] == "admin":
-        raise HTTPException(status_code=400, detail="Admin cannot join contests")
-    contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
-    if not contest:
-        raise HTTPException(status_code=404, detail="Contest not found")
-    if contest.get("status") != "open":
-        raise HTTPException(status_code=400, detail="Contest not open")
-    mt = contest.get("match_time")
-    if mt:
-        try:
-            if datetime.fromisoformat(mt.replace("Z", "+00:00")) <= datetime.now(timezone.utc):
-                raise HTTPException(status_code=400, detail="Entries closed: match already started")
-        except ValueError:
-            pass
-    # One entry per user per contest (unless previously rejected)
-    existing = await db.entries.find_one(
-        {"contest_id": contest_id, "user_id": user["id"], "status": {"$in": ["pending", "approved"]}}
-    )
-    if existing:
-        raise HTTPException(status_code=400, detail="You already have an entry for this contest")
+    settings = await get_payment_settings()
+    if not settings.get("manual_upi_enabled", True):
+        raise HTTPException(status_code=400, detail="Manual UPI payment is disabled. Please pay online.")
+    contest = await get_joinable_contest(contest_id, user)
 
     data = await screenshot.read()
     if not data:
@@ -382,12 +409,149 @@ async def create_entry(
         "screenshot_path": result["path"],
         "screenshot_content_type": screenshot.content_type or "image/png",
         "status": "pending",
+        "payment_method": "manual_upi",
         "winner_prize": 0.0,
         "created_at": now_iso(),
     }
     await db.entries.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+# ---------- Razorpay payments ----------
+@api_router.get("/payments/config")
+async def payments_config(user=Depends(get_current_user)):
+    s = await get_payment_settings()
+    return {"razorpay_enabled": rzp_client is not None, "key_id": RZP_KEY_ID if rzp_client else None,
+            "manual_upi_enabled": s.get("manual_upi_enabled", True)}
+
+
+@api_router.post("/payments/razorpay/order")
+async def rzp_create_order(body: RzpOrderBody, user=Depends(get_current_user)):
+    if not rzp_client:
+        raise HTTPException(status_code=503, detail="Online payments not configured")
+    contest = await get_joinable_contest(body.contest_id, user)
+    amount_paise = int(round(float(contest["entry_fee"]) * 100))
+    if amount_paise < 100:
+        raise HTTPException(status_code=400, detail="Entry fee must be at least ₹1 for online payment")
+    order_ref = str(uuid.uuid4())
+    try:
+        order = rzp_client.order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": order_ref[:40],
+            "payment_capture": 1,
+            "notes": {"contest_id": contest["id"], "user_id": user["id"], "order_ref": order_ref},
+        })
+    except Exception as e:
+        logger.exception("Razorpay order create failed")
+        raise HTTPException(status_code=502, detail=f"Payment gateway error: {e}")
+    await db.payment_orders.insert_one({
+        "id": order_ref,
+        "razorpay_order_id": order["id"],
+        "contest_id": contest["id"],
+        "contest_title": contest["title"],
+        "user_id": user["id"],
+        "user_name": user["name"],
+        "user_mobile": user["mobile"],
+        "amount": contest["entry_fee"],
+        "amount_paise": amount_paise,
+        "status": "created",
+        "created_at": now_iso(),
+    })
+    return {
+        "order_id": order["id"],
+        "amount": amount_paise,
+        "currency": "INR",
+        "key_id": RZP_KEY_ID,
+        "contest_title": contest["title"],
+        "prefill": {"name": user["name"], "contact": user["mobile"]},
+    }
+
+
+async def fulfill_rzp_order(razorpay_order_id: str, payment_id: str, source: str) -> dict:
+    order = await db.payment_orders.find_one({"razorpay_order_id": razorpay_order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    existing = await db.entries.find_one({"razorpay_order_id": razorpay_order_id}, {"_id": 0})
+    if existing:
+        return existing
+    entry = {
+        "id": str(uuid.uuid4()),
+        "contest_id": order["contest_id"],
+        "contest_title": order["contest_title"],
+        "user_id": order["user_id"],
+        "user_name": order["user_name"],
+        "user_mobile": order["user_mobile"],
+        "entry_fee": order["amount"],
+        "utr": payment_id,
+        "screenshot_path": None,
+        "payment_method": "razorpay",
+        "razorpay_order_id": razorpay_order_id,
+        "razorpay_payment_id": payment_id,
+        "status": "approved",
+        "decision_note": f"Auto-approved via Razorpay ({source})",
+        "decided_at": now_iso(),
+        "winner_prize": 0.0,
+        "created_at": now_iso(),
+    }
+    await db.entries.insert_one(entry)
+    entry.pop("_id", None)
+    await db.payment_orders.update_one(
+        {"razorpay_order_id": razorpay_order_id},
+        {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "entry_id": entry["id"]}},
+    )
+    return entry
+
+
+@api_router.post("/payments/razorpay/verify")
+async def rzp_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
+    if not rzp_client:
+        raise HTTPException(status_code=503, detail="Online payments not configured")
+    order = await db.payment_orders.find_one({"razorpay_order_id": body.razorpay_order_id, "user_id": user["id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    try:
+        rzp_client.utility.verify_payment_signature(body.model_dump())
+    except razorpay.errors.SignatureVerificationError:
+        await db.payment_orders.update_one({"razorpay_order_id": body.razorpay_order_id}, {"$set": {"status": "signature_failed"}})
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+    entry = await fulfill_rzp_order(body.razorpay_order_id, body.razorpay_payment_id, "checkout")
+    contest = await db.contests.find_one({"id": entry["contest_id"]}, {"_id": 0})
+    entry["external_link"] = contest.get("external_link") if contest else None
+    return entry
+
+
+@api_router.post("/payments/razorpay/webhook")
+async def rzp_webhook(request: Request):
+    if not rzp_client or not RZP_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+    raw = await request.body()
+    signature = request.headers.get("X-Razorpay-Signature", "")
+    try:
+        rzp_client.utility.verify_webhook_signature(raw.decode(), signature, RZP_WEBHOOK_SECRET)
+    except razorpay.errors.SignatureVerificationError:
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+    payload = json.loads(raw)
+    event = payload.get("event")
+    pay = (payload.get("payload", {}).get("payment", {}) or {}).get("entity", {}) or {}
+    if event in ("payment.captured", "order.paid") and pay.get("order_id"):
+        order = await db.payment_orders.find_one({"razorpay_order_id": pay["order_id"]})
+        if order:
+            await fulfill_rzp_order(pay["order_id"], pay["id"], "webhook")
+    elif event == "payment.failed" and pay.get("order_id"):
+        await db.payment_orders.update_one(
+            {"razorpay_order_id": pay["order_id"], "status": "created"},
+            {"$set": {"status": "failed", "failure_reason": pay.get("error_description")}},
+        )
+    return {"ok": True}
+
+
+@api_router.get("/admin/payments/razorpay")
+async def admin_rzp_orders(admin=Depends(require_admin)):
+    items = await db.payment_orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    collected = sum(o["amount"] for o in items if o.get("status") == "paid")
+    return {"orders": items, "total_collected": collected}
 
 
 @api_router.get("/entries/mine")
@@ -450,7 +614,8 @@ async def declare_winner(entry_id: str, body: DeclareWinnerBody, admin=Depends(r
 @api_router.get("/wallet/config")
 async def wallet_config(user=Depends(get_current_user)):
     s = await get_payment_settings()
-    return {"admin_upi_id": s["upi_id"], "payee_name": s.get("payee_name", ""), "instructions": s.get("instructions", ""), "qr_path": s.get("qr_path")}
+    return {"admin_upi_id": s["upi_id"], "payee_name": s.get("payee_name", ""), "instructions": s.get("instructions", ""), "qr_path": s.get("qr_path"),
+            "manual_upi_enabled": s.get("manual_upi_enabled", True), "razorpay_enabled": rzp_client is not None, "razorpay_key_id": RZP_KEY_ID if rzp_client else None}
 
 
 @api_router.get("/wallet/history")
@@ -480,7 +645,7 @@ async def admin_get_payment_settings(admin=Depends(require_admin)):
 @api_router.put("/admin/payment-settings")
 async def admin_put_payment_settings(body: PaymentSettingsBody, admin=Depends(require_admin)):
     doc = {"key": "payment", "upi_id": body.upi_id.strip(), "payee_name": body.payee_name.strip(),
-           "instructions": body.instructions.strip(), "updated_at": now_iso()}
+           "instructions": body.instructions.strip(), "manual_upi_enabled": body.manual_upi_enabled, "updated_at": now_iso()}
     await db.settings.update_one({"key": "payment"}, {"$set": doc}, upsert=True)
     return await get_payment_settings()
 
@@ -652,11 +817,14 @@ async def admin_stats(admin=Depends(require_admin)):
     total_contests = await db.contests.count_documents({})
     pending_entries = await db.entries.count_documents({"status": "pending"})
     pending_withdrawals = await db.withdrawals.count_documents({"status": "pending"})
+    online_paid = await db.payment_orders.find({"status": "paid"}, {"_id": 0, "amount": 1}).to_list(10000)
     return {
         "total_users": total_users,
         "total_contests": total_contests,
         "pending_entries": pending_entries,
         "pending_withdrawals": pending_withdrawals,
+        "online_payments_count": len(online_paid),
+        "online_collected": sum(o["amount"] for o in online_paid),
     }
 
 

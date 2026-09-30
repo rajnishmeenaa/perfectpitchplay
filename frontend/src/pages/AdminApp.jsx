@@ -8,7 +8,8 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning } from "@phosphor-icons/react";
+import { Switch } from "../components/ui/switch";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 
@@ -101,6 +102,8 @@ function StatsPanel() {
     { label: "Total contests", value: stats?.total_contests ?? "—", color: "orange", icon: Ticket },
     { label: "Pending payments", value: stats?.pending_entries ?? "—", color: "yellow", icon: Receipt },
     { label: "Pending withdrawals", value: stats?.pending_withdrawals ?? "—", color: "red", icon: CurrencyInr },
+    { label: "Razorpay collected", value: stats ? money(stats.online_collected) : "—", color: "emerald", icon: Lightning },
+    { label: "Online payments", value: stats?.online_payments_count ?? "—", color: "emerald", icon: Check },
   ];
   return (
     <div>
@@ -299,8 +302,8 @@ function EntriesPanel() {
   return (
     <div>
       <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Payment approvals</h1>
-      <p className="text-zinc-500 mt-1">Review UPI screenshots, approve to unlock the play link, declare winners.</p>
-      <SearchBox value={q} onChange={setQ} placeholder="Search mobile, name, contest, UTR..." testId="entries-search" />
+      <p className="text-zinc-500 mt-1">Razorpay payments are auto-approved instantly. Review manual UPI screenshots, approve to unlock the play link, declare winners.</p>
+      <SearchBox value={q} onChange={setQ} placeholder="Search mobile, name, contest, UTR / payment ID..." testId="entries-search" />
 
       <div className="bg-white border border-zinc-200 rounded-lg mt-4 overflow-hidden">
         <Table>
@@ -325,7 +328,11 @@ function EntriesPanel() {
                 <TableCell><div className="font-semibold text-zinc-800">{e.contest_title}</div></TableCell>
                 <TableCell className="tabular">
                   <div className="font-bold">{money(e.entry_fee)}</div>
-                  <div className="text-xs text-zinc-500">UTR: {e.utr || "—"}</div>
+                  {e.payment_method === "razorpay" ? (
+                    <div className="text-xs text-emerald-700 font-semibold" data-testid={`admin-paid-online-${e.id}`}>Razorpay · {e.razorpay_payment_id}</div>
+                  ) : (
+                    <div className="text-xs text-zinc-500">UTR: {e.utr || "—"}</div>
+                  )}
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={e.status} />
@@ -333,7 +340,7 @@ function EntriesPanel() {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center gap-2 justify-end">
-                    <Button size="sm" variant="outline" onClick={() => setPreview(e)} data-testid={`view-screenshot-${e.id}`}><Eye size={14} /></Button>
+                    {e.screenshot_path && <Button size="sm" variant="outline" onClick={() => setPreview(e)} data-testid={`view-screenshot-${e.id}`}><Eye size={14} /></Button>}
                     {e.status === "pending" && (
                       <>
                         <Button size="sm" onClick={() => decide(e, "approve")} className="bg-emerald-600 hover:bg-emerald-700" data-testid={`approve-entry-${e.id}`}><Check size={14} /></Button>
@@ -582,11 +589,15 @@ function WalletDialog({ user, onClose, onDone }) {
 }
 
 function PaymentSettingsPanel() {
-  const [form, setForm] = useState({ upi_id: "", payee_name: "", instructions: "" });
+  const [form, setForm] = useState({ upi_id: "", payee_name: "", instructions: "", manual_upi_enabled: true });
   const [qrPath, setQrPath] = useState(null);
   const [busy, setBusy] = useState(false);
-  const apply = (d) => { setForm({ upi_id: d.upi_id || "", payee_name: d.payee_name || "", instructions: d.instructions || "" }); setQrPath(d.qr_path || null); };
-  useEffect(() => { api.get("/admin/payment-settings").then(r => apply(r.data)); }, []);
+  const [rzp, setRzp] = useState(null);
+  const apply = (d) => { setForm({ upi_id: d.upi_id || "", payee_name: d.payee_name || "", instructions: d.instructions || "", manual_upi_enabled: d.manual_upi_enabled !== false }); setQrPath(d.qr_path || null); };
+  useEffect(() => {
+    api.get("/admin/payment-settings").then(r => apply(r.data));
+    api.get("/payments/config").then(r => setRzp(r.data));
+  }, []);
   const save = async () => {
     try { const r = await api.put("/admin/payment-settings", form); apply(r.data); toast.success("Payment settings saved"); }
     catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
@@ -608,9 +619,27 @@ function PaymentSettingsPanel() {
   return (
     <div>
       <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Payment settings</h1>
-      <p className="text-zinc-500 mt-1">Users pay entry fees to this UPI ID. Upload your own QR (PhonePe/GPay/Paytm) or we generate one.</p>
+      <p className="text-zinc-500 mt-1">Razorpay handles online payments with instant approval. Manual UPI (screenshot + approval) can be kept as a fallback or switched off.</p>
+      <div className={`mt-6 rounded-lg p-5 border flex items-center justify-between gap-4 ${rzp?.razorpay_enabled ? "bg-zinc-950 border-zinc-800 text-white" : "bg-yellow-50 border-yellow-200 text-yellow-900"}`} data-testid="razorpay-status-card">
+        <div>
+          <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest ${rzp?.razorpay_enabled ? "text-emerald-400" : "text-yellow-700"}`}>
+            <Lightning size={16} weight="fill" /> Razorpay {rzp?.razorpay_enabled ? "connected" : "not configured"}
+          </div>
+          <div className="text-sm mt-1 opacity-80">
+            {rzp?.razorpay_enabled ? <>Key <span className="tabular font-semibold" data-testid="razorpay-key-id">{rzp.key_id}</span> · payments auto-approve entries instantly.</> : "Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the backend environment."}
+          </div>
+        </div>
+        {rzp?.razorpay_enabled && <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold px-3 py-1">{rzp.key_id.startsWith("rzp_test") ? "TEST MODE" : "LIVE"}</span>}
+      </div>
       <div className="grid lg:grid-cols-2 gap-6 mt-6">
         <div className="bg-white border border-zinc-200 rounded-lg p-6 grid gap-4">
+          <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3">
+            <div>
+              <div className="text-sm font-bold text-zinc-900">Allow manual UPI transfer</div>
+              <div className="text-xs text-zinc-500">Users can still pay to your UPI ID and upload a screenshot for approval.</div>
+            </div>
+            <Switch checked={form.manual_upi_enabled} onCheckedChange={(v) => setForm({ ...form, manual_upi_enabled: v })} data-testid="settings-manual-upi-switch" />
+          </div>
           <Field label="UPI ID"><Input value={form.upi_id} onChange={(e) => setForm({ ...form, upi_id: e.target.value })} placeholder="yourname@upi" data-testid="settings-upi-input" /></Field>
           <Field label="Payee name"><Input value={form.payee_name} onChange={(e) => setForm({ ...form, payee_name: e.target.value })} data-testid="settings-payee-input" /></Field>
           <Field label="Instructions for users"><Textarea rows={3} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} placeholder="e.g. Add your mobile number in payment remark" data-testid="settings-instructions-input" /></Field>

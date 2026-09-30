@@ -8,9 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
+import { payForContest } from "../lib/razorpay";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -102,7 +103,7 @@ export default function UserApp() {
           <h1 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tighter text-zinc-950">
             Hey {user?.name?.split(" ")[0]}, ready to play?
           </h1>
-          <p className="text-zinc-500 mt-1">Browse the live contests, pay & get admin approval, then hit the pitch.</p>
+          <p className="text-zinc-500 mt-1">Browse the live contests, pay securely online and get instant access to the pitch.</p>
         </div>
 
         <Tabs defaultValue="contests" className="w-full">
@@ -143,7 +144,7 @@ export default function UserApp() {
                         <div className="font-heading font-bold text-zinc-950">{e.contest_title}</div>
                         <StatusBadge status={e.status} />
                       </div>
-                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · UTR: {e.utr || "—"}</div>
+                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "razorpay" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-online-${e.id}`}>Paid online · {e.razorpay_payment_id}</span> : `UTR: ${e.utr || "—"}`}</div>
                       {e.status === "won" && (
                         <div className="text-sm font-bold text-orange-700 mt-1 tabular">🏆 Prize: {money(e.winner_prize)}</div>
                       )}
@@ -296,13 +297,33 @@ function JoinDialog({ contest, onClose, config, onDone }) {
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [showManual, setShowManual] = useState(false);
 
-  useEffect(() => { setUtr(""); setFile(null); }, [contest]);
+  const rzpOn = !!config.razorpay_enabled;
+  const manualOn = config.manual_upi_enabled !== false;
+
+  useEffect(() => { setUtr(""); setFile(null); setShowManual(!rzpOn); }, [contest, rzpOn]);
 
   if (!contest) return null;
 
   const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "Admin")}&am=${contest.entry_fee}&cu=INR&tn=${encodeURIComponent(contest.title)}`;
   const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
+
+  const payOnline = async () => {
+    setPaying(true);
+    try {
+      await payForContest(contest);
+      toast.success("Payment successful! You're in — open the contest link.");
+      onClose();
+      onDone();
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Payment failed";
+      if (msg !== "Payment cancelled") toast.error(msg); else toast("Payment cancelled");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const submit = async () => {
     if (!file) { toast.error("Upload payment screenshot"); return; }
@@ -325,47 +346,77 @@ function JoinDialog({ contest, onClose, config, onDone }) {
 
   return (
     <Dialog open={!!contest} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md" data-testid="join-dialog">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto" data-testid="join-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-2xl font-extrabold tracking-tight">Join {contest.title}</DialogTitle>
-          <DialogDescription>Pay <span className="font-bold text-emerald-700 tabular">{money(contest.entry_fee)}</span> to the admin UPI below, then upload the payment screenshot.</DialogDescription>
+          <DialogDescription>
+            Entry fee <span className="font-bold text-emerald-700 tabular">{money(contest.entry_fee)}</span>.
+            {rzpOn ? " Pay online for instant approval." : " Pay to the admin UPI below, then upload the payment screenshot."}
+          </DialogDescription>
         </DialogHeader>
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex gap-4 items-center">
-          <div className="bg-white p-2 rounded-md border border-emerald-200 shrink-0 w-[126px]">
-            {config.qr_path ? <ScreenshotViewer path={config.qr_path} testId="upi-qr-image" className="w-full rounded" /> : <QRCodeSVG value={upiLink} size={110} data-testid="upi-qr" />}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-bold uppercase tracking-widest text-emerald-800">Pay to UPI ID</div>
-            <div className="flex items-center gap-2 mt-1">
-              <div className="font-heading text-xl font-extrabold text-emerald-900 tabular truncate select-all" data-testid="admin-upi-display">{config.admin_upi_id || "—"}</div>
-              <button type="button" onClick={copyUpi} className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800" title="Copy" data-testid="copy-upi-btn"><Copy size={16} weight="bold" /></button>
+
+        {rzpOn && (
+          <div className="bg-zinc-950 text-white rounded-lg p-5 border border-zinc-800" data-testid="razorpay-pay-box">
+            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest">
+              <ShieldCheck size={16} weight="fill" /> Instant entry · Secured by Razorpay
             </div>
-            {config.payee_name && <div className="text-xs text-emerald-800">{config.payee_name}</div>}
-            <a href={upiLink} className="mt-2 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-md" data-testid="pay-upi-link">
-              <DeviceMobile size={14} weight="bold" /> Pay {money(contest.entry_fee)} in UPI app
-            </a>
+            <p className="text-sm text-zinc-300 mt-2">UPI, cards, net banking & wallets. Your play link unlocks the moment payment succeeds — no waiting for approval.</p>
+            <Button disabled={paying} onClick={payOnline} className="mt-4 w-full h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold text-base active:scale-95" data-testid="razorpay-pay-btn">
+              <Lightning size={18} weight="fill" className="mr-1" /> {paying ? "Opening secure checkout..." : `Pay ${money(contest.entry_fee)} & join now`}
+            </Button>
+            {manualOn && (
+              <button type="button" onClick={() => setShowManual((v) => !v)} className="mt-3 w-full text-xs text-zinc-400 hover:text-white underline underline-offset-4" data-testid="toggle-manual-upi">
+                {showManual ? "Hide manual UPI option" : "Prefer manual UPI transfer + screenshot? Click here"}
+              </button>
+            )}
           </div>
-        </div>
-        {config.instructions && <p className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded p-2" data-testid="payment-instructions">{config.instructions}</p>}
-        <div className="space-y-3">
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">UTR / Ref no. (optional)</Label>
-            <Input value={utr} onChange={(e) => setUtr(e.target.value)} placeholder="12-digit UTR" className="mt-2 tabular" data-testid="input-utr" />
+        )}
+
+        {!rzpOn && !manualOn && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3" data-testid="payments-disabled-msg">Payments are temporarily unavailable. Please contact the admin.</p>
+        )}
+
+        {manualOn && showManual && (
+          <div className="space-y-4" data-testid="manual-upi-section">
+            {rzpOn && <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">Manual UPI (admin approval needed)</div>}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex gap-4 items-center">
+              <div className="bg-white p-2 rounded-md border border-emerald-200 shrink-0 w-[126px]">
+                {config.qr_path ? <ScreenshotViewer path={config.qr_path} testId="upi-qr-image" className="w-full rounded" /> : <QRCodeSVG value={upiLink} size={110} data-testid="upi-qr" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold uppercase tracking-widest text-emerald-800">Pay to UPI ID</div>
+                <div className="flex items-center gap-2 mt-1">
+                  <div className="font-heading text-xl font-extrabold text-emerald-900 tabular truncate select-all" data-testid="admin-upi-display">{config.admin_upi_id || "—"}</div>
+                  <button type="button" onClick={copyUpi} className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800" title="Copy" data-testid="copy-upi-btn"><Copy size={16} weight="bold" /></button>
+                </div>
+                {config.payee_name && <div className="text-xs text-emerald-800">{config.payee_name}</div>}
+                <a href={upiLink} className="mt-2 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-md" data-testid="pay-upi-link">
+                  <DeviceMobile size={14} weight="bold" /> Pay {money(contest.entry_fee)} in UPI app
+                </a>
+              </div>
+            </div>
+            {config.instructions && <p className="text-xs text-zinc-600 bg-zinc-50 border border-zinc-200 rounded p-2" data-testid="payment-instructions">{config.instructions}</p>}
+            <div>
+              <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">UTR / Ref no. (optional)</Label>
+              <Input value={utr} onChange={(e) => setUtr(e.target.value)} placeholder="12-digit UTR" className="mt-2 tabular" data-testid="input-utr" />
+            </div>
+            <div>
+              <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Payment screenshot</Label>
+              <label className="mt-2 flex items-center justify-center gap-2 h-24 border-2 border-dashed border-zinc-300 hover:border-emerald-500 rounded-md cursor-pointer transition-colors" data-testid="upload-zone">
+                <UploadSimple size={22} weight="bold" className="text-zinc-500" />
+                <span className="text-sm text-zinc-600 font-semibold">{file ? file.name : "Click to upload (PNG/JPG, ≤5MB)"}</span>
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="file-input" />
+              </label>
+            </div>
           </div>
-          <div>
-            <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Payment screenshot</Label>
-            <label className="mt-2 flex items-center justify-center gap-2 h-24 border-2 border-dashed border-zinc-300 hover:border-emerald-500 rounded-md cursor-pointer transition-colors" data-testid="upload-zone">
-              <UploadSimple size={22} weight="bold" className="text-zinc-500" />
-              <span className="text-sm text-zinc-600 font-semibold">{file ? file.name : "Click to upload (PNG/JPG, ≤5MB)"}</span>
-              <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="file-input" />
-            </label>
-          </div>
-        </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="cancel-join">Cancel</Button>
-          <Button disabled={busy} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="submit-entry-btn">
-            {busy ? "Submitting..." : "Submit entry"}
-          </Button>
+          {manualOn && showManual && (
+            <Button disabled={busy} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="submit-entry-btn">
+              {busy ? "Submitting..." : "Submit for approval"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
