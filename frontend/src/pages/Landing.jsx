@@ -30,7 +30,9 @@ export default function Landing() {
       toast.success(`Welcome ${u.name}`);
       navigate(u.role === "admin" ? "/admin" : "/app", { replace: true });
     } catch (err) {
-      toast.error(err?.response?.data?.detail || "Something went wrong");
+      const msg = err?.response?.data?.detail
+        || (err?.response ? "Something went wrong" : "Can't reach the server. Check your connection and try again.");
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

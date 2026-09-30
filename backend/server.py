@@ -961,10 +961,12 @@ async def shutdown_db_client():
 
 
 app.include_router(api_router)
+_cors_origins = os.environ.get('CORS_ORIGINS', '*').split(',')
+_cors_kwargs = {"allow_origin_regex": ".*"} if _cors_origins == ['*'] else {"allow_origins": _cors_origins}
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
     allow_methods=["*"],
     allow_headers=["*"],
+    **_cors_kwargs,
 )
