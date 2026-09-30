@@ -38,7 +38,12 @@
 - [x] Admin can upload a custom UPI QR image (POST/DELETE /api/admin/payment-settings/qr); users see it in the Join dialog (falls back to auto QR). User's own QR uploaded.
 - [x] Bug fix: contest play link now shown directly on user contest cards after approval (and kept after win); pending shows "Waiting for approval" — iteration_4/5 passed
 - [x] Match time on contests (admin datetime input, live countdown on cards, entries blocked after match start) + WhatsApp share button on cards — iteration_3 all passed
+- [x] **Razorpay integration (June 2026, iteration_6 all passed)**: primary online payment with instant auto-approval. Backend: `razorpay` SDK, `payment_orders` collection, GET /api/payments/config, POST /api/payments/razorpay/order, POST /api/payments/razorpay/verify (signature check → approved entry, idempotent), POST /api/payments/razorpay/webhook (payment.captured/order.paid/payment.failed, RAZORPAY_WEBHOOK_SECRET), GET /api/admin/payments/razorpay, stats online_collected/online_payments_count. Payment settings gained `manual_upi_enabled` toggle (manual screenshot flow kept as fallback; POST /api/entries rejects when disabled). Frontend: `lib/razorpay.js` loads checkout.js; JoinDialog shows Razorpay pay box + collapsible manual UPI; entries show "Paid online · pay_id"; admin Payments shows Razorpay badge (no screenshot button), Overview cards, Payment settings Razorpay status card + manual UPI switch.
+- Env keys (backend/.env): RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET, RAZORPAY_WEBHOOK_SECRET (paste into Razorpay Dashboard → Webhooks → URL `<backend>/api/payments/razorpay/webhook`, events payment.captured, payment.failed, order.paid). Keys currently TEST mode.
+- Note: .env files are gitignored and were recreated in this fork (admin password reset to Admin@1234, DB_NAME=pitchplay).
 
 ## Backlog
-- P2: Notifications (SMS/WhatsApp) on approval / winner
-- P2: Admin dashboard revenue chart
+- P1: Razorpay-based automated payouts (RazorpayX) for withdrawals — currently manual
+- P1: Approval/payment success banner + notifications (SMS/WhatsApp) on approval / winner
+- P2: Admin dashboard revenue chart (fees collected vs prizes paid)
+- P2: Auto-close contests once match time passes

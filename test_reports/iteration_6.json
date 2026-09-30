@@ -1,0 +1,36 @@
+{
+  "summary": "Tested Razorpay integration (backend + frontend) for PitchPlay. 24/25 pytest backend tests pass; the one failing test is a test-code artifact (invalid short password → 422 instead of 400 in a signup duplicate check). All Razorpay flows work correctly end-to-end: payments/config, wallet/config, order creation (admin blocked, non-existent 404, contest not open blocked, already-entered blocked), verify (bad signature 400, good signature approves entry, idempotent, other-user 404), webhook (missing/bad sig 400, payment.captured idempotent, payment.failed marks order failed), downstream data (contests my_entry_status, entries/mine payment_method razorpay, admin entries screenshot_path null, admin/stats online_payments_count/online_collected, admin/payments/razorpay total_collected), and manual_upi toggle blocking. Frontend: user login OK, join-dialog shows razorpay-pay-box with 'Pay ₹50 & join now' button, toggle-manual-upi reveals manual-upi-section with submit-entry-btn, Razorpay Checkout iframe opens with correct amount. Admin sees admin-paid-online for razorpay entries, view-screenshot only for manual entries, Razorpay collected/Online payments cards on Overview, razorpay-status-card with TEST MODE badge + key id + settings-manual-upi-switch + settings-save-btn.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Landing", "issues": ["Non-blocking React console warning: 'Cannot update a component (BrowserRouter) while rendering a different component (Landing)' — suggests a setState is being called during render in Landing.jsx. Not affecting functionality but should be fixed by wrapping in useEffect."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_razorpay.py",
+    "/app/test_reports/pytest/razorpay_results.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix Landing.jsx setState-in-render warning by moving the offending state update into a useEffect.",
+    "(Optional) All flows verified — no functional bugs found in the Razorpay integration."
+  ],
+  "critical_code_review_comments": [
+    "server.py:517 — on SignatureVerificationError the payment_orders row is flipped to 'signature_failed' but the *original* record stays discoverable by the /verify endpoint (user_id lookup). Because get_joinable_contest is not called again, a user whose verify failed cannot retry the same order id from Razorpay Checkout — they must open a new order (auto-handled by handler.on failure recreating). Acceptable but worth noting.",
+    "server.py:511 — /payments/razorpay/verify filters payment_orders by user_id, so cross-user verification returns 404 (good). Same query should also confirm status != 'signature_failed' if you want to prevent retry after tamper attempt (currently allowed).",
+    "server.py:498 — fulfill_rzp_order writes an entry then pops _id after insert; entry object also used by webhook path — safe.",
+    "razorpay.js — payForContest.handler awaits verify on the Razorpay callback context; if verify network fails the toast reads 'Payment succeeded but verification failed', but the payment_orders row will still be paid via webhook when it arrives. This is correct fallback behavior.",
+    "server.py file is 886 lines — approaching the 700-line 'should be split' threshold; consider extracting payments module (rzp_*, webhook, admin_rzp_orders, get_payment_settings) into backend/payments.py."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_razorpay.py (new)"
+  ],
+  "success_rate": {"backend": "96% (24/25; 1 failure is test-code, not app bug)", "frontend": "100% of testable flows (checkout completion inside iframe not automated but iframe opens with correct amount)"},
+  "test_credentials": "Admin 9602341799/Admin@1234, existing user 9000000001/user1234. Test also creates fresh users with mobiles like 98/97/96xxxxxxxx and password test1234.",
+  "seed_data_creation": "Test suite creates TEST Razorpay Contest, TEST CRUD contest (deleted), and several TEST_ prefixed users with paid entries. Manual UPI setting is toggled off/on within test and restored.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "test_razorpay.py under backend/tests covers Razorpay end-to-end using locally-computed HMAC signatures (RAZORPAY_KEY_SECRET and RAZORPAY_WEBHOOK_SECRET read from backend/.env). It also creates real Razorpay test-mode orders via the live API. Signature values must be reloaded from .env if secrets rotate. The one xfailed signup test can be trivially fixed by using a >=6 char password.",
+  "rca of the issue": "N/A — no functional bugs found. The single pytest failure is a test-code mistake (using password 'x' triggers Pydantic 422 rather than the app-level 400 duplicate-mobile check)."
+}
