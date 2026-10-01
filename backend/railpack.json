@@ -2,7 +2,10 @@
   "$schema": "https://schema.railpack.com",
   "steps": {
     "install": {
-      "commands": ["pip install --no-cache-dir -r requirements-railway.txt"]
+      "commands": [
+        { "src": "requirements-railway.txt", "dest": "requirements-railway.txt" },
+        "pip install --no-cache-dir -r requirements-railway.txt"
+      ]
     }
   }
 }
