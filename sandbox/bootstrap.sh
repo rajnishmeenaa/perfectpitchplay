@@ -6,10 +6,13 @@
 # all disappear, while the repo (and untracked files inside it) come back from a
 # snapshot. Run this after a recycle:
 #
-#   bash sandbox/bootstrap.sh          # rebuild + start mongo/backend/frontend
-#   bash sandbox/bootstrap.sh --check  # rebuild only, print what is missing
+#   bash sandbox/bootstrap.sh          # rebuild deps/config, then start mongo + backend
+#   bash sandbox/bootstrap.sh --check  # rebuild only, start nothing
 #
-# It is idempotent - steps that are already done are skipped.
+# It is idempotent - steps that are already done are skipped - and it always
+# returns: daemons are started fully detached (setsid, all fds redirected), so
+# they never hold the caller's stdout open. The frontend is NOT started here on
+# purpose; start it with the process tool so it registers as the live preview.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -25,6 +28,18 @@ CHECK_ONLY=0
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[warn]\033[0m %s\n' "$*"; }
 die()  { printf '\033[31m[fail]\033[0m %s\n' "$*" >&2; exit 1; }
+
+# Start a daemon so it cannot keep this script's caller waiting: new session,
+# stdin closed, stdout/stderr to its own log.
+spawn() {  # spawn <logfile> <cmd...>
+  local log="$1"; shift
+  if command -v setsid >/dev/null 2>&1; then
+    setsid nohup "$@" > "$log" 2>&1 < /dev/null &
+  else
+    nohup "$@" > "$log" 2>&1 < /dev/null &
+  fi
+  disown 2>/dev/null || true
+}
 
 cd "$REPO" || die "cannot cd to $REPO"
 
@@ -130,32 +145,74 @@ if ! command -v verdaccio >/dev/null 2>&1; then
   npm install -g verdaccio@6.10.4 >/dev/null 2>&1 || die "verdaccio install failed"
 fi
 
-if ! curl -sf -o /dev/null "$REGISTRY"; then
-  say "npm: starting verdaccio on 127.0.0.1:${REGISTRY_PORT}"
-  (nohup verdaccio --config /tmp/verdaccio/config.yaml > /tmp/verdaccio/out.log 2>&1 &)
-  for _ in $(seq 1 30); do curl -sf -o /dev/null "$REGISTRY" && break; sleep 1; done
-  curl -sf -o /dev/null "$REGISTRY" || die "verdaccio did not come up (see /tmp/verdaccio/out.log)"
-else
+if curl -sf -o /dev/null --max-time 3 "$REGISTRY" 2>/dev/null; then
   say "npm: verdaccio already running"
+else
+  say "npm: starting verdaccio on 127.0.0.1:${REGISTRY_PORT}"
+  spawn /tmp/verdaccio/out.log verdaccio --config /tmp/verdaccio/config.yaml
+  for _ in $(seq 1 30); do
+    curl -sf -o /dev/null --max-time 2 "$REGISTRY" 2>/dev/null && break
+    sleep 1
+  done
+  curl -sf -o /dev/null --max-time 3 "$REGISTRY" 2>/dev/null \
+    || die "verdaccio did not come up (see /tmp/verdaccio/out.log)"
 fi
 
 say "npm: publishing @emergentbase stubs"
 python3 - <<'PY' || die "stub publish failed"
-import base64, hashlib, io, json, os, tarfile, urllib.request
+import base64, hashlib, io, json, os, tarfile, urllib.error, urllib.request
+
 BASE = "http://127.0.0.1:4873"
-body = json.dumps({"name": "pub", "password": "pubpass123",
-                   "email": "pub@example.com", "type": "user", "roles": []}).encode()
-req = urllib.request.Request(BASE + "/-/user/org.couchdb.user:pub", data=body,
-                            headers={"Content-Type": "application/json"}, method="PUT")
-try:
-    tok = json.load(urllib.request.urlopen(req))["token"]
-except urllib.error.HTTPError as e:      # already registered from a previous run
-    if e.code != 409:
-        raise
-    login = json.dumps({"name": "pub", "password": "pubpass123"}).encode()
-    req = urllib.request.Request(BASE + "/-/user/org.couchdb.user:pub", data=login,
-                                headers={"Content-Type": "application/json"}, method="PUT")
-    tok = json.load(urllib.request.urlopen(req))["token"]
+STUBS = [("/tmp/stubs/overlay", "@emergentbase/overlay", "0.1.29"),
+         ("/tmp/stubs/visual-edits", "@emergentbase/visual-edits", "1.0.13")]
+
+
+def get(url):
+    return json.load(urllib.request.urlopen(url, timeout=30))
+
+
+def present(name, version):
+    """True when the registry already serves this exact version."""
+    try:
+        return version in get(BASE + "/" + name.replace("/", "%2f")).get("versions", {})
+    except Exception:
+        return False
+
+
+missing = [(d, n, v) for d, n, v in STUBS if not present(n, v)]
+if not missing:
+    print("  stubs already published")
+    raise SystemExit(0)
+
+
+def token():
+    """Register, or log in if the user survives from a previous run.
+
+    Verdaccio answers 409 to a repeated registration and - depending on version -
+    also to the login form, so neither call can be relied on alone. Try both,
+    then fall back to anonymous publishing, which this config allows.
+    """
+    bodies = [
+        {"name": "pub", "password": "pubpass123", "email": "pub@example.com",
+         "type": "user", "roles": []},
+        {"name": "pub", "password": "pubpass123"},
+    ]
+    for body in bodies:
+        req = urllib.request.Request(
+            BASE + "/-/user/org.couchdb.user:pub",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"}, method="PUT")
+        try:
+            tok = json.load(urllib.request.urlopen(req, timeout=30)).get("token")
+            if tok:
+                return tok
+        except urllib.error.HTTPError:
+            continue
+    return None
+
+
+TOK = token()
+
 
 def tgz_of(d):
     buf = io.BytesIO()
@@ -163,6 +220,7 @@ def tgz_of(d):
         for fn in sorted(os.listdir(d)):
             tf.add(os.path.join(d, fn), arcname="package/" + fn)
     return buf.getvalue()
+
 
 def publish(d, name, version):
     blob = tgz_of(d)
@@ -175,20 +233,24 @@ def publish(d, name, version):
            "_attachments": {fname: {"content_type": "application/octet-stream",
                                     "data": base64.b64encode(blob).decode(),
                                     "length": len(blob)}}}
+    headers = {"Content-Type": "application/json"}
+    if TOK:
+        headers["Authorization"] = "Bearer " + TOK
     req = urllib.request.Request(BASE + "/" + name.replace("/", "%2f"),
                                 data=json.dumps(doc).encode(),
-                                headers={"Content-Type": "application/json",
-                                         "Authorization": "Bearer " + tok}, method="PUT")
+                                headers=headers, method="PUT")
     try:
-        urllib.request.urlopen(req)
+        urllib.request.urlopen(req, timeout=60)
         print("  published", name, version)
     except urllib.error.HTTPError as e:
-        if e.code != 409:
+        if e.code == 409:
+            print("  already present:", name, version)
+        else:
             raise
-        print("  already present:", name, version)
 
-publish("/tmp/stubs/overlay", "@emergentbase/overlay", "0.1.29")
-publish("/tmp/stubs/visual-edits", "@emergentbase/visual-edits", "1.0.13")
+
+for d, n, v in missing:
+    publish(d, n, v)
 PY
 
 # --------------------------------------------------------------------------- #
@@ -261,33 +323,50 @@ if [[ "$CHECK_ONLY" == "1" ]]; then
 fi
 
 # --------------------------------------------------------------------------- #
-# 5. Start the stack. Order matters: mongo -> backend -> frontend.
+# 5. Start mongo + backend. Order matters. The frontend is left to the caller:
+#    it must be started through the process tool so it registers as the live
+#    preview instead of being orphaned inside this script's shell.
 # --------------------------------------------------------------------------- #
-start_bg() {  # name, log, command...
-  local name="$1" log="$2"; shift 2
-  (nohup "$@" > "$log" 2>&1 &)
-  say "started $name (log: $log)"
-}
+if [[ "$CHECK_ONLY" == "1" ]]; then
+  say "--check: rebuild complete, starting nothing"
+else
+  if pgrep -f "dev_mongo.py --port ${MONGO_PORT}" >/dev/null 2>&1; then
+    say "mongo shim already running on 127.0.0.1:${MONGO_PORT}"
+  else
+    spawn /tmp/dev-mongo.log "$VENV/bin/python" "$REPO/sandbox/dev_mongo.py" \
+      --port "$MONGO_PORT" --db-file "$REPO/sandbox/dev_mongo.json"
+    say "started dev mongo shim on 127.0.0.1:${MONGO_PORT} (log: /tmp/dev-mongo.log)"
+    sleep 2
+  fi
 
-curl -sf -o /dev/null "http://127.0.0.1:${MONGO_PORT}" 2>/dev/null
-if ! pgrep -f "dev_mongo.py --port ${MONGO_PORT}" >/dev/null 2>&1; then
-  start_bg "dev mongo shim" /tmp/dev-mongo.log \
-    "$VENV/bin/python" "$REPO/sandbox/dev_mongo.py" \
-    --port "$MONGO_PORT" --db-file "$REPO/sandbox/dev_mongo.json"
-  sleep 2
+  if pgrep -f "uvicorn server:app" >/dev/null 2>&1; then
+    say "backend already running on 127.0.0.1:${BACKEND_PORT}"
+  else
+    ( cd "$REPO/backend" && spawn /tmp/backend.log \
+        ./.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port "$BACKEND_PORT" )
+    say "started backend on 127.0.0.1:${BACKEND_PORT} (log: /tmp/backend.log)"
+    for _ in $(seq 1 40); do
+      curl -sf -o /dev/null --max-time 2 "http://127.0.0.1:${BACKEND_PORT}/api/debug/auth" \
+        2>/dev/null && break
+      sleep 1
+    done
+    curl -sf -o /dev/null --max-time 3 "http://127.0.0.1:${BACKEND_PORT}/api/debug/auth" \
+      2>/dev/null || warn "backend is not answering yet - check /tmp/backend.log"
+  fi
 fi
 
-if ! pgrep -f "uvicorn server:app" >/dev/null 2>&1; then
-  (cd "$REPO/backend" && nohup ./.venv/bin/python -m uvicorn server:app \
-    --host 127.0.0.1 --port "$BACKEND_PORT" > /tmp/backend.log 2>&1 &)
-  say "started backend on 127.0.0.1:${BACKEND_PORT} (log: /tmp/backend.log)"
-  for _ in $(seq 1 30); do
-    curl -sf -o /dev/null "http://127.0.0.1:${BACKEND_PORT}/api/debug/auth" && break
-    sleep 1
-  done
-fi
+cat <<EOF
 
-say "starting frontend (use your process tool for this one so it registers as the live preview)"
-echo "    cd $REPO/frontend && yarn start"
-echo
-echo "Sign in: admin ${ADMIN_MOBILE} / ${ADMIN_PASSWORD}   (user app: /app, admin console: /admin)"
+Next, start the frontend with the process tool so it becomes the live preview:
+    cd $REPO/frontend && yarn start
+
+Then sign in:
+    admin console /admin  ->  ${ADMIN_MOBILE} / ${ADMIN_PASSWORD}
+    user app      /app    ->  create an account, or use a seeded demo user
+
+A recycled sandbox also means an empty database. Seed something to look at:
+    curl -s -X POST http://127.0.0.1:${BACKEND_PORT}/api/auth/login \
+      -H 'Content-Type: application/json' \
+      -d '{"mobile":"${ADMIN_MOBILE}","password":"${ADMIN_PASSWORD}"}'
+and use the returned token against POST /api/contests (see sandbox/README.md).
+EOF

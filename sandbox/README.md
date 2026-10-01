@@ -28,6 +28,22 @@ bash sandbox/bootstrap.sh --check  # rebuild only, do not start anything
 It is idempotent, then prints the `yarn start` line for the frontend - start that
 one with the process tool so it registers as the live preview.
 
+Two details that matter if you edit it:
+
+* Daemons are started through a `spawn()` helper (`setsid nohup ... > log 2>&1 <
+  /dev/null &`). A plain `(nohup cmd > log 2>&1 &)` inherits the *caller's*
+  stdout/stderr as well, and a shell that waits for all descendants then blocks
+  until the daemon exits - i.e. forever. That cost a 25-minute timeout before it
+  was fixed.
+* The stub-publish step checks whether the registry already serves each version
+  before publishing. Verdaccio answers `409` to a repeated registration *and* to
+  the login form, so a re-run used to die at that step.
+
+The database is a JSON snapshot, so it survives a daemon restart
+(`[dev-mongo] loaded pitchplay: N docs`) but not a sandbox recycle. After a
+recycle the admin user is re-seeded on backend startup; everything else has to be
+created again.
+
 Two recycle-specific traps it handles:
 
 * a `yarn.lock` from the previous sandbox pins the `@emergentbase` stub tarballs by
