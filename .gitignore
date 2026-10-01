@@ -91,3 +91,7 @@ frontend/node_modules/.cache/default-development/0.pack
 credentials.json
 *.key
 .credentials
+
+# Sandbox dev shims: local data snapshots (scripts are tracked, data is not)
+sandbox/*.json
+sandbox/*.log
