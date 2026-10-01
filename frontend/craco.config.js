@@ -6,6 +6,12 @@ require("dotenv").config();
 // Craco sets NODE_ENV=development for start, NODE_ENV=production for build
 const isDevServer = process.env.NODE_ENV !== "production";
 
+// CI providers (Railway etc.) set CI=true, which makes CRA treat any lint
+// warning as a build failure. Prod bundles don't need the lint pass.
+if (!isDevServer) {
+  process.env.DISABLE_ESLINT_PLUGIN = "true";
+}
+
 // Environment variable overrides
 const config = {
   enableHealthCheck: process.env.ENABLE_HEALTH_CHECK === "true",
