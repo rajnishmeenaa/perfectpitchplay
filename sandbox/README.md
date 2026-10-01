@@ -15,8 +15,8 @@ and `frontend/src/**` are untouched.
 | Process | Command | Port | Visible as preview |
 | --- | --- | --- | --- |
 | Dev MongoDB shim | `backend/.venv/bin/python sandbox/dev_mongo.py` | 127.0.0.1:27017 | no |
-| Backend (FastAPI) | `cd backend && ./.venv/bin/python -m uvicorn server:app --host 0.0.0.0 --port 8000` | 0.0.0.0:8000 | yes |
-| Frontend (CRA/craco) | `cd frontend && yarn start` | 0.0.0.0:3000 | yes ← open this one |
+| Backend (FastAPI) | `cd backend && ./.venv/bin/python -m uvicorn server:app --host 127.0.0.1 --port 8000` | 127.0.0.1:8000 | no |
+| Frontend (CRA/craco) | `cd frontend && yarn start` | 0.0.0.0:3000 | yes ← the only preview |
 | Verdaccio (npm mirror) | `verdaccio --config /tmp/verdaccio/config.yaml` | 127.0.0.1:4873 | no |
 
 ## `dev_mongo.py` — local MongoDB stand-in
@@ -98,3 +98,33 @@ Sign in at `/admin` with `9602341799` / `admin123`, or create a normal user at
   the simulated-Google-user recipe in `auth_testing.md` instead.
 * `public/index.html` loads `assets.emergent.sh/scripts/emergent-main.js` and
   PostHog; both are blocked here and fail silently without affecting the app.
+
+## "Request failed with status code 401" in the preview
+
+Seen in practice, and worth knowing because two different causes look identical
+from the browser:
+
+1. **The session was thrown away by a transient failure.** `AuthProvider.refresh()`
+   used to clear the stored token whenever `GET /api/auth/me` failed for *any*
+   reason, so restarting the backend (or a hiccup in the preview proxy) logged the
+   open tab out. Every later request then went out with no `Authorization` header
+   and the backend answered `401 {"detail":"Missing token"}`. It now only clears
+   the token on a real 401/403.
+2. **The preview iframe could not keep the token.** `lib/api.js` now keeps the
+   token in memory as well as `localStorage`, verifies that a write actually stuck,
+   and warns if the browser is blocking storage for the preview origin.
+
+Both used to surface as a raw unhandled `AxiosError` because the admin panels fetch
+with `.then()` and no `.catch()`. `lib/api.js` now has a response interceptor that
+turns a 401 into a clear sign-out message instead.
+
+To see what actually reached the server from your browser, open
+`/api/debug/auth` in the preview (read-only, reveals no secret): it reports whether
+the `Authorization` header arrived, whether the token decodes, and which user/role
+it maps to. If `authorization_header_present` is `false` while you are signed in,
+the token is not being stored or the header is being stripped upstream.
+
+Note the backend deliberately binds `127.0.0.1`, so only the frontend is offered as
+a preview. When it was bound to `0.0.0.0` the raw API also appeared as a preview,
+which is a second origin that shares the sandbox preview domain — signing in on one
+and browsing the other produces exactly this class of confusion.

@@ -21,8 +21,13 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       setUser(data);
-    } catch (_e) {
-      setToken(null);
+    } catch (e) {
+      // Only a real 401/403 means the token is bad. A backend restart, a flaky
+      // preview proxy or being offline must NOT destroy a perfectly good token -
+      // doing so silently logged the user out and left every later request
+      // unauthenticated ("Missing token" 401s across the admin console).
+      const status = e?.response?.status;
+      if (status === 401 || status === 403) setToken(null);
       setUser(null);
     } finally {
       setLoading(false);

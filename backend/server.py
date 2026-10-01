@@ -337,6 +337,43 @@ async def me(user=Depends(get_current_user)):
     }
 
 
+@api_router.get("/debug/auth")
+async def debug_auth(request: Request, authorization: Optional[str] = Header(None)):
+    """Read-only auth diagnostic for preview environments.
+
+    Reverse proxies in front of a preview can strip the Authorization header, and
+    an iframe can lose localStorage, so both symptoms look identical from the
+    browser: a 401 right after a successful login. Open this URL in the same
+    browser/origin as the app to see what actually reached the server. Reveals no
+    secret - only whether a token arrived and whether it decodes.
+    """
+    report = {
+        "authorization_header_present": bool(authorization),
+        "authorization_header_chars": len(authorization or ""),
+        "bearer_prefix_ok": bool(authorization and authorization.startswith("Bearer ")),
+        "token_decodes": False,
+        "token_error": None,
+        "user_id": None,
+        "role": None,
+        "origin": request.headers.get("origin"),
+        "referer": request.headers.get("referer"),
+        "forwarded_for": request.headers.get("x-forwarded-for"),
+        "scheme": request.url.scheme,
+    }
+    if report["bearer_prefix_ok"]:
+        token = authorization.split(" ", 1)[1]
+        try:
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+            report["token_decodes"] = True
+            report["user_id"] = payload.get("sub")
+            report["role"] = payload.get("role")
+            user = await db.users.find_one({"id": payload.get("sub")}, {"_id": 0})
+            report["user_found_in_db"] = bool(user)
+        except jwt.PyJWTError as exc:
+            report["token_error"] = f"{type(exc).__name__}: {exc}"
+    return report
+
+
 EMERGENT_SESSION_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
 
 
