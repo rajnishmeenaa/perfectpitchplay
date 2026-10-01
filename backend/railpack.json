@@ -4,7 +4,8 @@
     "install": {
       "commands": [
         { "src": "requirements-railway.txt", "dest": "requirements-railway.txt" },
-        "pip install --no-cache-dir -r requirements-railway.txt"
+        "python -m venv /app/.venv",
+        "/app/.venv/bin/pip install --no-cache-dir -r requirements-railway.txt"
       ]
     }
   }
