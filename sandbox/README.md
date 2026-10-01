@@ -10,6 +10,32 @@ the two workarounds.
 Nothing in here changes app behaviour in a deployed environment — `backend/server.py`
 and `frontend/src/**` are untouched.
 
+## After a sandbox recycle
+
+Arena recycles the sandbox between sessions. The repo comes back from a snapshot
+(including untracked files inside it, e.g. `frontend/.yarnrc`), but everything
+outside it is gone: `/tmp`, globally installed npm packages, `backend/.venv`,
+`frontend/node_modules` and the gitignored `.env` files. `.git` may also come back
+as a fresh clone at the base commit while the working tree still holds our changes.
+
+One command rebuilds all of it:
+
+```bash
+bash sandbox/bootstrap.sh          # re-sync git, rebuild deps, start mongo + backend
+bash sandbox/bootstrap.sh --check  # rebuild only, do not start anything
+```
+
+It is idempotent, then prints the `yarn start` line for the frontend - start that
+one with the process tool so it registers as the live preview.
+
+Two recycle-specific traps it handles:
+
+* a `yarn.lock` from the previous sandbox pins the `@emergentbase` stub tarballs by
+  hash, and the stubs are regenerated each time, so the stale lock fails yarn's
+  integrity check and is dropped;
+* the git branch is re-synced with `git fetch` + `git reset --mixed` so history
+  matches the remote without touching the restored files.
+
 ## What runs
 
 | Process | Command | Port | Visible as preview |
