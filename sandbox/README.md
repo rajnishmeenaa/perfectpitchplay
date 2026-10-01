@@ -58,8 +58,12 @@ The preview host is not the sandbox, so browser code must never call
 
 * `frontend/.env` sets `REACT_APP_BACKEND_URL=` (empty) → `src/lib/api.js` builds
   `/api/...`, i.e. same-origin relative URLs.
-* `frontend/package.json` has `"proxy": "http://127.0.0.1:8000"` → the CRA dev
-  server forwards `/api/*` to the backend inside the sandbox.
+* `frontend/package.json` has `"proxy": "http://127.0.0.1:8000"` and
+  `craco.config.js` re-scopes it to `[{ context: ["/api"], target }]`. The scope
+  matters: react-scripts turns a bare `proxy` string into a catch-all middleware
+  that also swallows the SPA's client-side routes (`/app`, `/admin` would 404
+  instead of falling through to `historyApiFallback`). The config object form is
+  required because the pinned webpack-dev-server is v5.
 * `frontend/.env` also sets `HOST=0.0.0.0`, `DANGEROUSLY_DISABLE_HOST_CHECK=true`
   (required because CRA enables the host check whenever `proxy` is set) and
   `WDS_SOCKET_PORT=0` so hot reload uses the preview host.

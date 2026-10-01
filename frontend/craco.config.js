@@ -137,7 +137,25 @@ let webpackConfig = {
   },
 };
 
+// react-scripts reads the "proxy" field from package.json itself and hands us a
+// ready-made catch-all middleware; replace it with a path-scoped config object
+// (webpack-dev-server 5 builds the middleware from that shape itself).
+let BACKEND_TARGET;
+try {
+  BACKEND_TARGET = require("./package.json").proxy;
+} catch (err) {
+  BACKEND_TARGET = undefined;
+}
+
 webpackConfig.devServer = (devServerConfig) => {
+  // The catch-all proxy also swallows the SPA's client-side routes (/app,
+  // /admin) because http-proxy-middleware forwards every path without a dot in
+  // it. Scoped to /api, react-router deep links fall through to
+  // historyApiFallback and still get index.html.
+  if (BACKEND_TARGET) {
+    devServerConfig.proxy = [{ context: ["/api"], target: BACKEND_TARGET }];
+  }
+
   // Add health check endpoints if enabled
   if (config.enableHealthCheck && setupHealthEndpoints && healthPluginInstance) {
     const originalSetupMiddlewares = devServerConfig.setupMiddlewares;
