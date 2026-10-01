@@ -129,17 +129,40 @@ function ContestsPanel() {
   const [contests, setContests] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const blank = { title: "", description: "", external_link: "", entry_fee: "", prize_pool: "", max_participants: "100", match_time: "" };
+  const blank = { title: "", description: "", external_link: "", entry_fee: "", prize_breakdown: [{ rank: "1", amount: "" }], max_participants: "100", match_time: "" };
   const [form, setForm] = useState(blank);
 
   const load = () => api.get("/contests").then(r => setContests(r.data));
   useEffect(() => { load(); }, []);
 
   const openEdit = (c) => {
+    const prizeBreakdown = c.prize_breakdown?.length
+      ? c.prize_breakdown.map((item) => ({ rank: String(item.rank), amount: String(item.amount) }))
+      : [{ rank: "1", amount: String(c.prize_pool || "") }];
     setEditing(c);
-    setForm({ title: c.title, description: c.description || "", external_link: c.external_link || "", entry_fee: String(c.entry_fee), prize_pool: String(c.prize_pool), max_participants: String(c.max_participants), match_time: c.match_time ? toLocalInput(c.match_time) : "" });
+    setForm({ title: c.title, description: c.description || "", external_link: c.external_link || "", entry_fee: String(c.entry_fee), prize_breakdown: prizeBreakdown, max_participants: String(c.max_participants), match_time: c.match_time ? toLocalInput(c.match_time) : "" });
     setOpen(true);
   };
+
+  const updatePrize = (index, field, value) => {
+    setForm({ ...form, prize_breakdown: form.prize_breakdown.map((item, i) => i === index ? { ...item, [field]: value } : item) });
+  };
+
+  const addPrize = () => {
+    const ranks = form.prize_breakdown.map((item) => parseInt(item.rank || "0")).filter(Boolean);
+    const nextRank = ranks.length ? Math.max(...ranks) + 1 : 1;
+    setForm({ ...form, prize_breakdown: [...form.prize_breakdown, { rank: String(nextRank), amount: "" }] });
+  };
+
+  const removePrize = (index) => {
+    if (form.prize_breakdown.length === 1) return;
+    setForm({ ...form, prize_breakdown: form.prize_breakdown.filter((_, i) => i !== index) });
+  };
+
+  const prizeBreakdown = form.prize_breakdown
+    .map((item) => ({ rank: parseInt(item.rank || "0"), amount: parseFloat(item.amount || "0") }))
+    .filter((item) => item.rank > 0 && item.amount > 0);
+  const prizeTotal = prizeBreakdown.reduce((sum, item) => sum + item.amount, 0);
 
   const create = async () => {
     const payload = {
@@ -147,7 +170,8 @@ function ContestsPanel() {
       description: form.description.trim(),
       external_link: form.external_link.trim(),
       entry_fee: parseFloat(form.entry_fee || "0"),
-      prize_pool: parseFloat(form.prize_pool || "0"),
+      prize_pool: prizeTotal,
+      prize_breakdown: prizeBreakdown,
       max_participants: parseInt(form.max_participants || "100"),
       match_time: form.match_time ? new Date(form.match_time).toISOString() : null,
     };
@@ -206,7 +230,10 @@ function ContestsPanel() {
                   <div className="text-xs text-zinc-500 truncate max-w-xs">{c.external_link}</div>
                   {c.match_time && <div className="text-xs text-orange-700 font-semibold mt-0.5" data-testid={`admin-match-time-${c.id}`}>Match: {new Date(c.match_time).toLocaleString()}</div>}
                 </TableCell>
-                <TableCell className="tabular"><span className="font-bold">{money(c.entry_fee)}</span> / <span className="text-orange-700 font-bold">{money(c.prize_pool)}</span></TableCell>
+                <TableCell className="tabular">
+                  <span className="font-bold">{money(c.entry_fee)}</span> / <span className="text-orange-700 font-bold">{money(c.prize_pool)}</span>
+                  {c.prize_breakdown?.length > 0 && <div className="mt-1 text-[11px] text-zinc-500">{c.prize_breakdown.map((item) => `#${item.rank} ${money(item.amount)}`).join(" · ")}</div>}
+                </TableCell>
                 <TableCell className="tabular">{c.participants_count}/{c.max_participants}</TableCell>
                 <TableCell><StatusBadge status={c.status} /></TableCell>
                 <TableCell className="text-right">
@@ -229,7 +256,7 @@ function ContestsPanel() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg" data-testid="new-contest-dialog">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="new-contest-dialog">
           <DialogHeader><DialogTitle className="font-heading font-extrabold">{editing ? "Edit contest" : "Create contest"}</DialogTitle></DialogHeader>
           <div className="grid gap-3">
             <Field label="Title"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} data-testid="contest-title-input" /></Field>
@@ -237,9 +264,28 @@ function ContestsPanel() {
             <Field label="Description"><Textarea rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} data-testid="contest-desc-input" /></Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Entry fee (₹)"><Input inputMode="decimal" value={form.entry_fee} onChange={(e) => setForm({ ...form, entry_fee: e.target.value })} data-testid="contest-fee-input" /></Field>
-              <Field label="Prize pool (₹)"><Input inputMode="decimal" value={form.prize_pool} onChange={(e) => setForm({ ...form, prize_pool: e.target.value })} data-testid="contest-prize-input" /></Field>
+              <Field label="Max participants"><Input inputMode="numeric" value={form.max_participants} onChange={(e) => setForm({ ...form, max_participants: e.target.value })} data-testid="contest-max-input" /></Field>
             </div>
-            <Field label="Max participants"><Input inputMode="numeric" value={form.max_participants} onChange={(e) => setForm({ ...form, max_participants: e.target.value })} data-testid="contest-max-input" /></Field>
+            <div>
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Flexible prize distribution</Label>
+                <span className="text-sm font-bold text-orange-700" data-testid="contest-prize-total">Total: {money(prizeTotal)}</span>
+              </div>
+              <div className="mt-2 grid gap-2">
+                {form.prize_breakdown.map((item, index) => (
+                  <div key={index} className="grid grid-cols-[100px_1fr_40px] gap-2 items-center">
+                    <Input type="number" min="1" inputMode="numeric" value={item.rank} onChange={(e) => updatePrize(index, "rank", e.target.value)} placeholder="Rank" aria-label={`Prize rank ${index + 1}`} data-testid={`contest-prize-rank-${index}`} />
+                    <Input type="number" min="0" step="0.01" inputMode="decimal" value={item.amount} onChange={(e) => updatePrize(index, "amount", e.target.value)} placeholder="Prize amount (₹)" aria-label={`Prize amount ${index + 1}`} data-testid={`contest-prize-amount-${index}`} />
+                    <Button type="button" size="icon" variant="ghost" className="text-red-600" disabled={form.prize_breakdown.length === 1} onClick={() => removePrize(index)} aria-label={`Remove prize ${index + 1}`}>
+                      <Trash size={16} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              <Button type="button" variant="outline" size="sm" className="mt-2" onClick={addPrize} data-testid="add-prize-row">
+                <Plus size={14} className="mr-1" /> Add rank prize
+              </Button>
+            </div>
             <Field label="Match time (entries close)"><Input type="datetime-local" value={form.match_time} onChange={(e) => setForm({ ...form, match_time: e.target.value })} data-testid="contest-time-input" /></Field>
           </div>
           <DialogFooter>

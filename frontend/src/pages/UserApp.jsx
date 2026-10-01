@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -6,12 +6,13 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
-import { payForContest } from "../lib/razorpay";
+import { payForContest, topUpWallet } from "../lib/razorpay";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -118,7 +119,9 @@ export default function UserApp() {
   const [config, setConfig] = useState({ admin_upi_id: "" });
   const [joinContest, setJoinContest] = useState(null);
   const [wdOpen, setWdOpen] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
   const [justJoined, setJustJoined] = useState(null);
+  const [notifyToken, setNotifyToken] = useState(0);
 
   const loadAll = async () => {
     try {
@@ -138,6 +141,7 @@ export default function UserApp() {
       setUser(me.data);
       setHistory(h.data);
       setWinners(win.data);
+      setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
     }
@@ -165,6 +169,7 @@ export default function UserApp() {
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Wallet</span>
               <span className="font-heading font-extrabold text-emerald-900 tabular">{money(user?.wallet_balance)}</span>
             </div>
+            <NotificationBell refreshToken={notifyToken} />
             <div className="text-right hidden sm:block">
               <div className="text-sm font-bold text-zinc-950">{user?.name}</div>
               <div className="text-xs text-zinc-500 tabular">{user?.mobile}</div>
@@ -223,7 +228,7 @@ export default function UserApp() {
                         <div className="font-heading font-bold text-zinc-950">{e.contest_title}</div>
                         <StatusBadge status={e.status} />
                       </div>
-                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "razorpay" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-online-${e.id}`}>Paid online · {e.razorpay_payment_id}</span> : `UTR: ${e.utr || "—"}`}</div>
+                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "razorpay" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-online-${e.id}`}>Paid online · {e.razorpay_payment_id}</span> : e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : `UTR: ${e.utr || "—"}`}</div>
                       {e.status === "won" && (
                         <div className="text-sm font-bold text-orange-700 mt-1 tabular">🏆 Prize: {money(e.winner_prize)}</div>
                       )}
@@ -252,10 +257,19 @@ export default function UserApp() {
                 <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2" data-testid="wallet-balance">
                   {money(user?.wallet_balance)}
                 </div>
+                {config.razorpay_enabled && (
+                  <Button
+                    onClick={() => setTopUpOpen(true)}
+                    className="mt-6 w-full bg-emerald-400 text-emerald-950 hover:bg-emerald-300 font-bold rounded-md active:scale-95"
+                    data-testid="add-money-btn"
+                  >
+                    <PlusCircle size={18} weight="bold" className="mr-1" /> Add money
+                  </Button>
+                )}
                 <Button
                   disabled={(user?.wallet_balance || 0) <= 0}
                   onClick={() => setWdOpen(true)}
-                  className="mt-6 w-full bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-md active:scale-95"
+                  className={`${config.razorpay_enabled ? "mt-3" : "mt-6"} w-full bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-md active:scale-95`}
                   data-testid="request-withdrawal-btn"
                 >
                   <CurrencyInr size={18} weight="bold" className="mr-1" /> Request withdrawal
@@ -290,8 +304,9 @@ export default function UserApp() {
         </Tabs>
       </main>
 
-      <JoinDialog contest={joinContest} onClose={() => setJoinContest(null)} config={config} onDone={loadAll} onPaid={setJustJoined} />
+      <JoinDialog contest={joinContest} onClose={() => setJoinContest(null)} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} onTopUp={() => setTopUpOpen(true)} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} />
+      <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} />
     </div>
   );
 }
@@ -344,6 +359,16 @@ function ContestCard({ contest, onJoin }) {
           <div className="font-heading text-xl font-extrabold text-orange-700 tabular mt-1">{money(contest.prize_pool)}</div>
         </div>
       </div>
+      {contest.prize_breakdown?.length > 0 && (
+        <div className="mt-3 rounded-md border border-orange-100 bg-orange-50/50 px-3 py-2" data-testid={`prize-breakdown-${contest.id}`}>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-orange-700 mb-1.5">Prize breakdown</div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {contest.prize_breakdown.map((item) => (
+              <span key={item.rank} className="text-zinc-600">Rank <b className="text-zinc-900">{item.rank}</b>: <b className="text-orange-700">{money(item.amount)}</b></span>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-zinc-100">
         <div className="text-xs text-zinc-500 tabular">
           {contest.participants_count}/{contest.max_participants} joined
@@ -373,11 +398,12 @@ function ContestCard({ contest, onJoin }) {
   );
 }
 
-function JoinDialog({ contest, onClose, config, onDone, onPaid }) {
+function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 0, onTopUp }) {
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [walletPaying, setWalletPaying] = useState(false);
   const [showManual, setShowManual] = useState(false);
 
   const rzpOn = !!config.razorpay_enabled;
@@ -387,8 +413,26 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid }) {
 
   if (!contest) return null;
 
+  const fee = Number(contest.entry_fee || 0);
+  const canWallet = walletBalance >= fee && fee > 0;
+
   const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "Admin")}&am=${contest.entry_fee}&cu=INR&tn=${encodeURIComponent(contest.title)}`;
   const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
+
+  const payFromWallet = async () => {
+    setWalletPaying(true);
+    try {
+      const { data } = await api.post("/entries/wallet", { contest_id: contest.id });
+      toast.success("Paid from wallet! You're in.");
+      onClose();
+      onPaid?.(data);
+      onDone();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Wallet payment failed");
+    } finally {
+      setWalletPaying(false);
+    }
+  };
 
   const payOnline = async () => {
     setPaying(true);
@@ -435,6 +479,29 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid }) {
             {rzpOn ? " Pay online for instant approval." : " Pay to the admin UPI below, then upload the payment screenshot."}
           </DialogDescription>
         </DialogHeader>
+
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center justify-between gap-3" data-testid="wallet-pay-box">
+          <div className="min-w-0">
+            <div className="text-xs font-bold uppercase tracking-widest text-emerald-800">Wallet balance</div>
+            <div className="font-heading text-xl font-extrabold text-emerald-900 tabular" data-testid="wallet-pay-balance">{money(walletBalance)}</div>
+            {!canWallet && (
+              <div className="text-xs text-amber-700 mt-0.5" data-testid="wallet-insufficient">
+                Insufficient for this entry ({money(fee)})
+              </div>
+            )}
+          </div>
+          {canWallet ? (
+            <Button disabled={walletPaying} onClick={payFromWallet} className="shrink-0 bg-emerald-600 hover:bg-emerald-700 font-bold rounded-full active:scale-95" data-testid="pay-from-wallet-btn">
+              <Lightning size={16} weight="fill" className="mr-1" /> {walletPaying ? "Paying..." : `Pay ${money(fee)}`}
+            </Button>
+          ) : (
+            config.razorpay_enabled && (
+              <Button variant="outline" onClick={() => { onClose(); onTopUp?.(); }} className="shrink-0 border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold rounded-full" data-testid="wallet-topup-cta">
+                <PlusCircle size={16} weight="bold" className="mr-1" /> Add money
+              </Button>
+            )
+          )}
+        </div>
 
         {rzpOn && (
           <div className="bg-zinc-950 text-white rounded-lg p-5 border border-zinc-800" data-testid="razorpay-pay-box">
@@ -552,6 +619,181 @@ function WithdrawDialog({ open, onClose, balance, onDone }) {
   );
 }
 
+function NotificationBell({ refreshToken }) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const [unread, setUnread] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const loadCount = useCallback(async () => {
+    try {
+      const { data } = await api.get("/notifications/unread-count");
+      setUnread(data.unread || 0);
+    } catch (_e) { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    loadCount();
+    const t = setInterval(loadCount, 20000);
+    return () => clearInterval(t);
+  }, [loadCount, refreshToken]);
+
+  const loadList = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/notifications");
+      setItems(data);
+    } catch (_e) {
+      toast.error("Failed to load notifications");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onOpenChange = (v) => { setOpen(v); if (v) loadList(); };
+
+  const markAll = async () => {
+    try {
+      await api.post("/notifications/read-all");
+      setItems((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnread(0);
+    } catch (_e) { /* ignore */ }
+  };
+
+  const markOne = async (n) => {
+    if (n.read) return;
+    try {
+      await api.post(`/notifications/${n.id}/read`);
+      setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      setUnread((u) => Math.max(0, u - 1));
+    } catch (_e) { /* ignore */ }
+  };
+
+  const iconFor = (type) => {
+    switch (type) {
+      case "win": return <Trophy size={18} weight="fill" className="text-orange-500" />;
+      case "payout": return <CurrencyInr size={18} weight="fill" className="text-emerald-600" />;
+      case "topup": return <PlusCircle size={18} weight="fill" className="text-emerald-600" />;
+      case "wallet": return <Wallet size={18} weight="fill" className="text-emerald-600" />;
+      default: return <Ticket size={18} weight="fill" className="text-zinc-500" />;
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <button type="button" className="relative p-2 rounded-full hover:bg-zinc-100 text-zinc-700" aria-label="Notifications" data-testid="notification-bell">
+          <Bell size={22} weight="duotone" />
+          {unread > 0 && (
+            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold tabular" data-testid="notification-badge">
+              {unread > 99 ? "99+" : unread}
+            </span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[92vw] sm:w-96 p-0" data-testid="notification-panel">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
+          <div className="font-heading font-bold text-zinc-950">Notifications</div>
+          {unread > 0 && (
+            <button type="button" onClick={markAll} className="text-xs font-semibold text-emerald-700 hover:underline" data-testid="mark-all-read">
+              Mark all read
+            </button>
+          )}
+        </div>
+        <div className="max-h-[60vh] overflow-y-auto divide-y divide-zinc-100">
+          {loading ? (
+            <div className="p-8 text-center text-sm text-zinc-500">Loading...</div>
+          ) : items.length === 0 ? (
+            <div className="p-8 text-center text-sm text-zinc-500" data-testid="notifications-empty">No notifications yet</div>
+          ) : (
+            items.map((n) => (
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => markOne(n)}
+                className={`w-full text-left px-4 py-3 flex gap-3 hover:bg-zinc-50 ${n.read ? "opacity-60" : ""}`}
+                data-testid={`notification-${n.id}`}
+              >
+                <div className="shrink-0 mt-0.5">{iconFor(n.type)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-sm font-bold truncate ${n.read ? "text-zinc-700" : "text-zinc-950"}`}>{n.title}</span>
+                    {!n.read && <span className="shrink-0 w-2 h-2 rounded-full bg-emerald-500" />}
+                  </div>
+                  {n.body && <div className="text-xs text-zinc-600 mt-0.5 leading-relaxed">{n.body}</div>}
+                  <div className="text-[10px] text-zinc-400 uppercase tracking-wider mt-1">{new Date(n.created_at).toLocaleString()}</div>
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function TopUpDialog({ open, onClose, onDone }) {
+  const [amt, setAmt] = useState("");
+  const [busy, setBusy] = useState(false);
+  const presets = [100, 250, 500, 1000, 2000];
+
+  useEffect(() => { if (open) { setAmt(""); setBusy(false); } }, [open]);
+
+  const submit = async () => {
+    const n = parseFloat(amt);
+    if (!n || n < 1) { toast.error("Enter an amount of ₹1 or more"); return; }
+    if (n > 100000) { toast.error("Maximum top-up is ₹1,00,000"); return; }
+    setBusy(true);
+    try {
+      await topUpWallet(n);
+      toast.success(`${money(n)} added to your wallet!`);
+      onClose();
+      onDone();
+    } catch (e) {
+      const msg = e?.response?.data?.detail || e?.message || "Top-up failed";
+      if (msg !== "Payment cancelled") toast.error(msg); else toast("Payment cancelled");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md" data-testid="topup-dialog">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-2xl font-extrabold">Add money to wallet</DialogTitle>
+          <DialogDescription>Top up instantly via Razorpay. Your balance is ready to use for contest entries right away.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {presets.map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setAmt(String(p))}
+                className={`px-4 py-2 rounded-full border text-sm font-bold tabular transition-colors ${String(p) === amt ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
+                data-testid={`topup-preset-${p}`}
+              >
+                {money(p)}
+              </button>
+            ))}
+          </div>
+          <div>
+            <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Amount (₹)</Label>
+            <Input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder="Enter amount" className="mt-2 tabular" data-testid="topup-amount-input" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="topup-cancel">Cancel</Button>
+          <Button disabled={busy} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="topup-pay-btn">
+            <Lightning size={16} weight="fill" className="mr-1" /> {busy ? "Opening checkout..." : "Proceed to pay"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SuccessBanner({ entry, onClose }) {
   return (
     <div className="relative overflow-hidden mb-6 rounded-lg border border-emerald-500 bg-emerald-600 text-white p-6 sm:p-7 animate-in fade-in slide-in-from-top-2 duration-500" data-testid="success-banner">
@@ -560,7 +802,7 @@ function SuccessBanner({ entry, onClose }) {
       <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-100">
-            <ShieldCheck size={16} weight="fill" /> Payment confirmed · {entry.razorpay_payment_id}
+            <ShieldCheck size={16} weight="fill" /> Payment confirmed{entry.razorpay_payment_id ? ` · ${entry.razorpay_payment_id}` : entry.payment_method === "wallet" ? " · Paid from wallet" : ""}
           </div>
           <h2 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tighter mt-2">You're in! 🎉</h2>
           <p className="text-emerald-50 mt-1">Your spot in <b>{entry.contest_title}</b> is locked. Head over and set up your team before the match starts.</p>

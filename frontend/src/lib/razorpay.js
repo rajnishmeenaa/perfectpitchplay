@@ -44,3 +44,34 @@ export const payForContest = async (contest) => {
     rzp.open();
   });
 };
+
+// Opens Razorpay Checkout to add money to the user's in-app wallet.
+// Resolves with { ok, wallet_balance }, rejects on failure/dismiss.
+export const topUpWallet = async (amount) => {
+  const ok = await loadRazorpayScript();
+  if (!ok) throw new Error("Could not load payment gateway. Check your connection.");
+  const { data: order } = await api.post("/wallet/topup/order", { amount });
+  return new Promise((resolve, reject) => {
+    const rzp = new window.Razorpay({
+      key: order.key_id,
+      amount: order.amount,
+      currency: order.currency,
+      name: "PitchPlay",
+      description: `Add money to wallet`,
+      order_id: order.order_id,
+      prefill: order.prefill,
+      theme: { color: "#059669" },
+      handler: async (res) => {
+        try {
+          const { data } = await api.post("/wallet/topup/verify", res);
+          resolve(data);
+        } catch (e) {
+          reject(new Error(e?.response?.data?.detail || "Payment verification failed"));
+        }
+      },
+      modal: { ondismiss: () => reject(new Error("Payment cancelled")) },
+    });
+    rzp.on("payment.failed", (r) => reject(new Error(r?.error?.description || "Payment failed")));
+    rzp.open();
+  });
+};

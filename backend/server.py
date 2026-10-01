@@ -136,6 +136,32 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def inr(amount) -> str:
+    try:
+        return f"₹{float(amount):,.0f}"
+    except (TypeError, ValueError):
+        return f"₹{amount}"
+
+
+async def push_notification(user_id: str, type: str, title: str, body: str = "", data: Optional[dict] = None) -> None:
+    """Insert an in-app notification for a user. Never raises — notifications are best-effort."""
+    if not user_id:
+        return
+    try:
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "type": type,
+            "title": title,
+            "body": body or "",
+            "data": data or {},
+            "read": False,
+            "created_at": now_iso(),
+        })
+    except Exception:
+        logger.exception("push_notification failed")
+
+
 def sanitize_user(u: dict, hide_mobile: bool = True) -> dict:
     out = {k: v for k, v in u.items() if k not in ("password_hash",)}
     if hide_mobile and out.get("role") != "admin":
@@ -164,12 +190,25 @@ class SetMobileBody(BaseModel):
     mobile: str = Field(min_length=6, max_length=15)
 
 
+class PrizeBreakdownItem(BaseModel):
+    rank: int = Field(ge=1, le=10000)
+    amount: float = Field(gt=0, le=10000000)
+
+
+def normalize_prize_breakdown(items: List[PrizeBreakdownItem]) -> List[dict]:
+    ranks = [item.rank for item in items]
+    if len(ranks) != len(set(ranks)):
+        raise HTTPException(status_code=422, detail="Prize ranks must be unique")
+    return [item.model_dump() for item in sorted(items, key=lambda item: item.rank)]
+
+
 class ContestCreate(BaseModel):
     title: str
     description: str = ""
     external_link: str
     entry_fee: float
-    prize_pool: float
+    prize_pool: float = Field(default=0, ge=0)
+    prize_breakdown: List[PrizeBreakdownItem] = Field(default_factory=list)
     max_participants: int = 100
     match_time: Optional[str] = None  # ISO string
 
@@ -179,7 +218,8 @@ class ContestUpdate(BaseModel):
     description: Optional[str] = None
     external_link: Optional[str] = None
     entry_fee: Optional[float] = None
-    prize_pool: Optional[float] = None
+    prize_pool: Optional[float] = Field(default=None, ge=0)
+    prize_breakdown: Optional[List[PrizeBreakdownItem]] = None
     max_participants: Optional[int] = None
     match_time: Optional[str] = None
     status: Optional[str] = None  # "open", "closed", "completed"
@@ -232,6 +272,14 @@ class RzpVerifyBody(BaseModel):
     razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
+
+
+class WalletTopupOrderBody(BaseModel):
+    amount: float = Field(gt=0, le=100000)
+
+
+class WalletEntryBody(BaseModel):
+    contest_id: str
 
 
 async def get_payment_settings() -> dict:
@@ -422,13 +470,16 @@ async def list_contests(user=Depends(get_current_user)):
 
 @api_router.post("/contests")
 async def create_contest(body: ContestCreate, admin=Depends(require_admin)):
+    prize_breakdown = normalize_prize_breakdown(body.prize_breakdown)
+    prize_pool = round(sum(item["amount"] for item in prize_breakdown), 2) if prize_breakdown else body.prize_pool
     doc = {
         "id": str(uuid.uuid4()),
         "title": body.title,
         "description": body.description,
         "external_link": body.external_link,
         "entry_fee": body.entry_fee,
-        "prize_pool": body.prize_pool,
+        "prize_pool": prize_pool,
+        "prize_breakdown": prize_breakdown,
         "max_participants": body.max_participants,
         "match_time": body.match_time,
         "status": "open",
@@ -443,6 +494,11 @@ async def create_contest(body: ContestCreate, admin=Depends(require_admin)):
 @api_router.patch("/contests/{contest_id}")
 async def update_contest(contest_id: str, body: ContestUpdate, admin=Depends(require_admin)):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if body.prize_breakdown is not None:
+        prize_breakdown = normalize_prize_breakdown(body.prize_breakdown)
+        updates["prize_breakdown"] = prize_breakdown
+        if prize_breakdown:
+            updates["prize_pool"] = round(sum(item["amount"] for item in prize_breakdown), 2)
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
     res = await db.contests.update_one({"id": contest_id}, {"$set": updates})
@@ -508,6 +564,53 @@ async def create_entry(
     return doc
 
 
+@api_router.post("/entries/wallet")
+async def create_entry_wallet(body: WalletEntryBody, user=Depends(get_current_user)):
+    """Pay the entry fee directly from the user's in-app wallet balance. Auto-approved."""
+    contest = await get_joinable_contest(body.contest_id, user)
+    fee = float(contest["entry_fee"])
+    if fee <= 0:
+        raise HTTPException(status_code=400, detail="This contest cannot be joined with wallet balance")
+    # Atomic conditional debit — only succeeds if the wallet has enough funds.
+    res = await db.users.update_one(
+        {"id": user["id"], "wallet_balance": {"$gte": fee}},
+        {"$inc": {"wallet_balance": -fee}},
+    )
+    if res.matched_count == 0:
+        raise HTTPException(status_code=400, detail="Insufficient wallet balance. Please top up to continue.")
+    entry_id = str(uuid.uuid4())
+    doc = {
+        "id": entry_id,
+        "contest_id": contest["id"],
+        "contest_title": contest["title"],
+        "user_id": user["id"],
+        "user_name": user["name"],
+        "user_mobile": user.get("mobile"),
+        "entry_fee": fee,
+        "utr": None,
+        "screenshot_path": None,
+        "status": "approved",
+        "payment_method": "wallet",
+        "decision_note": "Auto-approved via wallet payment",
+        "decided_at": now_iso(),
+        "winner_prize": 0.0,
+        "created_at": now_iso(),
+    }
+    await db.entries.insert_one(doc)
+    await db.wallet_logs.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user["id"], "amount": -fee,
+        "note": f"Entry fee · {contest['title']}", "by": "system", "created_at": now_iso(),
+    })
+    await push_notification(
+        user["id"], "entry", "Entry confirmed",
+        f"You joined {contest['title']} using your wallet. {inr(fee)} deducted. Good luck!",
+        {"contest_id": contest["id"], "entry_id": entry_id, "amount": fee},
+    )
+    doc.pop("_id", None)
+    doc["external_link"] = contest.get("external_link")
+    return doc
+
+
 # ---------- Razorpay payments ----------
 @api_router.get("/payments/config")
 async def payments_config(user=Depends(get_current_user)):
@@ -539,6 +642,7 @@ async def rzp_create_order(body: RzpOrderBody, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail=f"Payment gateway error: {e}")
     await db.payment_orders.insert_one({
         "id": order_ref,
+        "kind": "entry",
         "razorpay_order_id": order["id"],
         "contest_id": contest["id"],
         "contest_title": contest["title"],
@@ -592,6 +696,11 @@ async def fulfill_rzp_order(razorpay_order_id: str, payment_id: str, source: str
         {"razorpay_order_id": razorpay_order_id},
         {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "entry_id": entry["id"]}},
     )
+    await push_notification(
+        order["user_id"], "entry", "Payment successful",
+        f"Your entry for {order['contest_title']} is confirmed. Good luck!",
+        {"contest_id": order["contest_id"], "entry_id": entry["id"]},
+    )
     return entry
 
 
@@ -613,6 +722,88 @@ async def rzp_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
     return entry
 
 
+# ---------- Wallet top-up (Razorpay) ----------
+@api_router.post("/wallet/topup/order")
+async def wallet_topup_order(body: WalletTopupOrderBody, user=Depends(get_current_user)):
+    if not rzp_client:
+        raise HTTPException(status_code=503, detail="Online payments not configured")
+    if body.amount < 1:
+        raise HTTPException(status_code=400, detail="Minimum top-up is ₹1")
+    amount_paise = int(round(float(body.amount) * 100))
+    order_ref = str(uuid.uuid4())
+    try:
+        order = rzp_client.order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": order_ref[:40],
+            "payment_capture": 1,
+            "notes": {"kind": "topup", "user_id": user["id"], "order_ref": order_ref},
+        })
+    except Exception as e:
+        logger.exception("Razorpay top-up order create failed")
+        raise HTTPException(status_code=400, detail=f"Payment gateway error: {e}")
+    await db.payment_orders.insert_one({
+        "id": order_ref,
+        "kind": "topup",
+        "razorpay_order_id": order["id"],
+        "user_id": user["id"],
+        "user_name": user["name"],
+        "user_mobile": user.get("mobile"),
+        "amount": float(body.amount),
+        "amount_paise": amount_paise,
+        "status": "created",
+        "created_at": now_iso(),
+    })
+    return {
+        "order_id": order["id"],
+        "amount": amount_paise,
+        "currency": "INR",
+        "key_id": RZP_KEY_ID,
+        "prefill": {"name": user["name"], "contact": user.get("mobile") or ""},
+    }
+
+
+async def fulfill_topup_order(razorpay_order_id: str, payment_id: str, source: str) -> dict:
+    order = await db.payment_orders.find_one({"razorpay_order_id": razorpay_order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("topup_credited"):
+        return order
+    amount = float(order["amount"])
+    await db.users.update_one({"id": order["user_id"]}, {"$inc": {"wallet_balance": amount}})
+    await db.wallet_logs.insert_one({
+        "id": str(uuid.uuid4()), "user_id": order["user_id"], "amount": amount,
+        "note": f"Wallet top-up via Razorpay ({payment_id})", "by": "system", "created_at": now_iso(),
+    })
+    await db.payment_orders.update_one(
+        {"razorpay_order_id": razorpay_order_id},
+        {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "topup_credited": True}},
+    )
+    await push_notification(
+        order["user_id"], "topup", "Wallet topped up",
+        f"{inr(amount)} has been added to your wallet.",
+        {"amount": amount, "payment_id": payment_id},
+    )
+    return order
+
+
+@api_router.post("/wallet/topup/verify")
+async def wallet_topup_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
+    if not rzp_client:
+        raise HTTPException(status_code=503, detail="Online payments not configured")
+    order = await db.payment_orders.find_one({"razorpay_order_id": body.razorpay_order_id, "user_id": user["id"]}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    try:
+        rzp_client.utility.verify_payment_signature(body.model_dump())
+    except razorpay.errors.SignatureVerificationError:
+        await db.payment_orders.update_one({"razorpay_order_id": body.razorpay_order_id}, {"$set": {"status": "signature_failed"}})
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+    await fulfill_topup_order(body.razorpay_order_id, body.razorpay_payment_id, "checkout")
+    me = await db.users.find_one({"id": user["id"]}, {"_id": 0, "wallet_balance": 1})
+    return {"ok": True, "wallet_balance": (me or {}).get("wallet_balance", 0.0)}
+
+
 PAYOUT_FINAL_OK = {"processed"}
 PAYOUT_FINAL_FAIL = {"reversed", "failed", "rejected", "cancelled"}
 
@@ -622,10 +813,20 @@ async def apply_payout_status(w: dict, payout: dict) -> dict:
     upd = {"payout_status": ps, "payout_utr": payout.get("utr"), "payout_synced_at": now_iso()}
     if ps in PAYOUT_FINAL_OK and w["status"] != "paid":
         upd.update({"status": "paid", "decided_at": now_iso(), "decision_note": f"Paid via RazorpayX payout {payout['id']}"})
+        await push_notification(
+            w["user_id"], "payout", "Withdrawal paid",
+            f"{inr(w['amount'])} has been transferred to {w.get('upi_id', 'your UPI')}.",
+            {"withdrawal_id": w["id"], "amount": w["amount"]},
+        )
     elif ps in PAYOUT_FINAL_FAIL and w["status"] not in ("rejected", "paid"):
         reason = payout.get("failure_reason") or (payout.get("status_details") or {}).get("description") or ps
         await db.users.update_one({"id": w["user_id"]}, {"$inc": {"wallet_balance": w["amount"]}})
         upd.update({"status": "rejected", "decided_at": now_iso(), "decision_note": f"Payout {ps}: {reason}. Amount refunded to wallet."})
+        await push_notification(
+            w["user_id"], "payout", "Withdrawal failed — refunded",
+            f"Your payout of {inr(w['amount'])} could not be completed ({reason}). The amount has been refunded to your wallet.",
+            {"withdrawal_id": w["id"], "amount": w["amount"]},
+        )
     elif ps and ps not in PAYOUT_FINAL_OK | PAYOUT_FINAL_FAIL and w["status"] == "pending":
         upd["status"] = "processing"
     await db.withdrawals.update_one({"id": w["id"]}, {"$set": upd})
@@ -706,7 +907,10 @@ async def rzp_webhook(request: Request):
     if event in ("payment.captured", "order.paid") and pay.get("order_id"):
         order = await db.payment_orders.find_one({"razorpay_order_id": pay["order_id"]})
         if order:
-            await fulfill_rzp_order(pay["order_id"], pay["id"], "webhook")
+            if order.get("kind") == "topup":
+                await fulfill_topup_order(pay["order_id"], pay["id"], "webhook")
+            else:
+                await fulfill_rzp_order(pay["order_id"], pay["id"], "webhook")
     elif event == "payment.failed" and pay.get("order_id"):
         await db.payment_orders.update_one(
             {"razorpay_order_id": pay["order_id"], "status": "created"},
@@ -760,6 +964,19 @@ async def approve_entry(entry_id: str, body: ApproveBody, admin=Depends(require_
         {"id": entry_id},
         {"$set": {"status": new_status, "decision_note": body.note or "", "decided_at": now_iso()}},
     )
+    if new_status == "approved":
+        await push_notification(
+            entry["user_id"], "entry", "Entry approved",
+            f"Your entry for {entry.get('contest_title', 'the contest')} was approved. You're in!",
+            {"contest_id": entry.get("contest_id"), "entry_id": entry_id},
+        )
+    else:
+        reason = f" Note: {body.note}" if body.note else ""
+        await push_notification(
+            entry["user_id"], "entry", "Entry rejected",
+            f"Your entry for {entry.get('contest_title', 'the contest')} was rejected.{reason}",
+            {"contest_id": entry.get("contest_id"), "entry_id": entry_id},
+        )
     return {"ok": True, "status": new_status}
 
 
@@ -780,6 +997,11 @@ async def declare_winner(entry_id: str, body: DeclareWinnerBody, admin=Depends(r
     await db.users.update_one(
         {"id": entry["user_id"]},
         {"$inc": {"wallet_balance": body.prize_amount}},
+    )
+    await push_notification(
+        entry["user_id"], "win", "You won! 🏆",
+        f"Congratulations! You won {inr(body.prize_amount)} in {entry.get('contest_title', 'a contest')}. The prize has been credited to your wallet.",
+        {"contest_id": entry.get("contest_id"), "entry_id": entry_id, "prize": body.prize_amount},
     )
     return {"ok": True}
 
@@ -809,6 +1031,31 @@ async def wallet_history(user=Depends(get_current_user)):
 async def winners_board(user=Depends(get_current_user)):
     items = await db.entries.find({"status": "won"}, {"_id": 0, "id": 1, "contest_title": 1, "user_name": 1, "winner_prize": 1, "won_at": 1}).sort("won_at", -1).to_list(100)
     return items
+
+
+# ---------- Notifications ----------
+@api_router.get("/notifications")
+async def list_notifications(user=Depends(get_current_user)):
+    items = await db.notifications.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return items
+
+
+@api_router.get("/notifications/unread-count")
+async def notifications_unread_count(user=Depends(get_current_user)):
+    unread = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    return {"unread": unread}
+
+
+@api_router.post("/notifications/read-all")
+async def notifications_read_all(user=Depends(get_current_user)):
+    await db.notifications.update_many({"user_id": user["id"], "read": False}, {"$set": {"read": True, "read_at": now_iso()}})
+    return {"ok": True}
+
+
+@api_router.post("/notifications/{nid}/read")
+async def notification_read(nid: str, user=Depends(get_current_user)):
+    await db.notifications.update_one({"id": nid, "user_id": user["id"]}, {"$set": {"read": True, "read_at": now_iso()}})
+    return {"ok": True}
 
 
 @api_router.get("/admin/payment-settings")
@@ -904,12 +1151,23 @@ async def decide_withdrawal(wid: str, body: ApproveBody, admin=Depends(require_a
             {"id": wid},
             {"$set": {"status": "paid", "decision_note": body.note or "", "decided_at": now_iso()}},
         )
+        await push_notification(
+            w["user_id"], "payout", "Withdrawal paid",
+            f"{inr(w['amount'])} has been sent to {w['upi_id']}.",
+            {"withdrawal_id": wid, "amount": w["amount"]},
+        )
     else:
         # refund
         await db.users.update_one({"id": w["user_id"]}, {"$inc": {"wallet_balance": w["amount"]}})
         await db.withdrawals.update_one(
             {"id": wid},
             {"$set": {"status": "rejected", "decision_note": body.note or "", "decided_at": now_iso()}},
+        )
+        reason = f" Note: {body.note}" if body.note else ""
+        await push_notification(
+            w["user_id"], "payout", "Withdrawal rejected",
+            f"Your withdrawal of {inr(w['amount'])} was rejected and the amount has been refunded to your wallet.{reason}",
+            {"withdrawal_id": wid, "amount": w["amount"]},
         )
     return {"ok": True}
 
@@ -983,6 +1241,13 @@ async def admin_adjust_wallet(user_id: str, body: WalletAdjustBody, admin=Depend
         "id": str(uuid.uuid4()), "user_id": user_id, "amount": body.amount,
         "note": body.note or "", "by": admin["id"], "created_at": now_iso(),
     })
+    credited = body.amount > 0
+    await push_notification(
+        user_id, "wallet", "Wallet credited" if credited else "Wallet debited",
+        f"{inr(abs(body.amount))} {'added to' if credited else 'deducted from'} your wallet."
+        + (f" {body.note}" if body.note else ""),
+        {"amount": body.amount, "wallet_balance": new_balance},
+    )
     return {"ok": True, "wallet_balance": new_balance}
 
 

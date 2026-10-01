@@ -70,6 +70,46 @@ class TestContestEdit:
         # cleanup
         requests.delete(f"{API}/contests/{cid}", headers=admin_headers, timeout=30)
 
+    def test_flexible_prize_breakdown_sets_total_and_sorts_ranks(self, admin_headers):
+        r = requests.post(f"{API}/contests", json={
+            "title": "TEST_FlexiblePrizes", "description": "", "external_link": "https://a.com",
+            "entry_fee": 50, "prize_pool": 9999, "max_participants": 10,
+            "prize_breakdown": [
+                {"rank": 3, "amount": 100},
+                {"rank": 1, "amount": 500},
+                {"rank": 2, "amount": 250},
+            ],
+        }, headers=admin_headers, timeout=30)
+        assert r.status_code == 200, r.text
+        contest = r.json()
+        cid = contest["id"]
+        assert contest["prize_pool"] == 850
+        assert contest["prize_breakdown"] == [
+            {"rank": 1, "amount": 500},
+            {"rank": 2, "amount": 250},
+            {"rank": 3, "amount": 100},
+        ]
+
+        r2 = requests.patch(f"{API}/contests/{cid}", json={
+            "prize_breakdown": [{"rank": 1, "amount": 600}, {"rank": 2, "amount": 300}],
+        }, headers=admin_headers, timeout=30)
+        assert r2.status_code == 200, r2.text
+        assert r2.json()["prize_pool"] == 900
+        assert r2.json()["prize_breakdown"] == [
+            {"rank": 1, "amount": 600},
+            {"rank": 2, "amount": 300},
+        ]
+        requests.delete(f"{API}/contests/{cid}", headers=admin_headers, timeout=30)
+
+    def test_flexible_prize_breakdown_rejects_duplicate_ranks(self, admin_headers):
+        r = requests.post(f"{API}/contests", json={
+            "title": "TEST_DuplicatePrizes", "description": "", "external_link": "https://a.com",
+            "entry_fee": 10, "max_participants": 10,
+            "prize_breakdown": [{"rank": 1, "amount": 100}, {"rank": 1, "amount": 50}],
+        }, headers=admin_headers, timeout=30)
+        assert r.status_code == 422
+        assert r.json()["detail"] == "Prize ranks must be unique"
+
     def test_patch_contest_404(self, admin_headers):
         r = requests.patch(f"{API}/contests/nonexistent-id", json={"title": "x"}, headers=admin_headers, timeout=30)
         assert r.status_code == 404
