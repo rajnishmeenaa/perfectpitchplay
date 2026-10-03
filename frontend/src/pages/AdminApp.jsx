@@ -8,10 +8,11 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning, Flag } from "@phosphor-icons/react";
 import { Switch } from "../components/ui/switch";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
+import AdminFantasy from "./AdminFantasy";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const toLocalInput = (iso) => { const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -36,6 +37,7 @@ const StatusBadge = ({ status }) => {
 const sections = [
   { key: "stats", label: "Overview", icon: ChartBar },
   { key: "contests", label: "Contests", icon: Ticket },
+  { key: "fantasy", label: "Fantasy cricket", icon: Flag },
   { key: "entries", label: "Payments", icon: Receipt },
   { key: "withdrawals", label: "Withdrawals", icon: CurrencyInr },
   { key: "users", label: "Users", icon: Users },
@@ -86,6 +88,7 @@ export default function AdminApp() {
       <main className="flex-1 p-6 lg:p-10">
         {active === "stats" && <StatsPanel />}
         {active === "contests" && <ContestsPanel />}
+        {active === "fantasy" && <AdminFantasy />}
         {active === "entries" && <EntriesPanel />}
         {active === "withdrawals" && <WithdrawalsPanel />}
         {active === "users" && <UsersPanel />}
@@ -105,6 +108,9 @@ function StatsPanel() {
     { label: "Pending withdrawals", value: stats?.pending_withdrawals ?? "—", color: "red", icon: CurrencyInr },
     { label: "Razorpay collected", value: stats ? money(stats.online_collected) : "—", color: "emerald", icon: Lightning },
     { label: "Online payments", value: stats?.online_payments_count ?? "—", color: "emerald", icon: Check },
+    { label: "Fantasy matches", value: stats?.total_matches ?? "—", color: "emerald", icon: Flag },
+    { label: "Teams built", value: stats?.fantasy_teams ?? "—", color: "emerald", icon: Users },
+    { label: "Contests to settle", value: stats?.fantasy_contests_unsettled ?? "—", color: "orange", icon: Trophy },
   ];
   return (
     <div>

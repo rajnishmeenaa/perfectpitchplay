@@ -16,10 +16,11 @@ export const loadRazorpayScript = () => {
 };
 
 // Opens Razorpay Checkout for a contest; resolves with the approved entry, rejects on failure/dismiss.
-export const payForContest = async (contest) => {
+// `teamId` is required for fantasy contests (the entry is tied to one saved fantasy team).
+export const payForContest = async (contest, teamId) => {
   const ok = await loadRazorpayScript();
   if (!ok) throw new Error("Could not load payment gateway. Check your connection.");
-  const { data: order } = await api.post("/payments/razorpay/order", { contest_id: contest.id });
+  const { data: order } = await api.post("/payments/razorpay/order", { contest_id: contest.id, team_id: teamId || undefined });
   return new Promise((resolve, reject) => {
     const rzp = new window.Razorpay({
       key: order.key_id,

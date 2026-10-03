@@ -9,10 +9,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
+import FantasyApp from "./FantasyApp";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -118,6 +119,9 @@ export default function UserApp() {
   const [winners, setWinners] = useState([]);
   const [config, setConfig] = useState({ admin_upi_id: "" });
   const [joinContest, setJoinContest] = useState(null);
+  const [joinTeam, setJoinTeam] = useState(null);
+  const [tab, setTab] = useState("contests");
+  const [focusMatch, setFocusMatch] = useState(null);
   const [wdOpen, setWdOpen] = useState(false);
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [justJoined, setJustJoined] = useState(null);
@@ -189,10 +193,13 @@ export default function UserApp() {
           <p className="text-zinc-500 mt-1">Browse the live contests, pay securely online and get instant access to the pitch.</p>
         </div>
 
-        <Tabs defaultValue="contests" className="w-full">
+        <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="bg-white border border-zinc-200 rounded-full p-1 h-auto" data-testid="tabs-list">
             <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-contests">
               <Ticket size={16} className="mr-1.5" /> Contests
+            </TabsTrigger>
+            <TabsTrigger value="fantasy" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-fantasy">
+              <Flag size={16} className="mr-1.5" /> Fantasy
             </TabsTrigger>
             <TabsTrigger value="entries" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-entries">
               <Trophy size={16} className="mr-1.5" /> My Entries
@@ -210,10 +217,26 @@ export default function UserApp() {
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {contests.map((c) => (
-                  <ContestCard key={c.id} contest={c} onJoin={() => setJoinContest(c)} />
+                  <ContestCard
+                    key={c.id}
+                    contest={c}
+                    onJoin={() => { setJoinTeam(null); setJoinContest(c); }}
+                    onFantasy={() => { setTab("fantasy"); setFocusMatch(c.match_id || null); }}
+                  />
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="fantasy" className="mt-6">
+            <FantasyApp
+              config={config}
+              walletBalance={user?.wallet_balance || 0}
+              focusMatchId={focusMatch}
+              entries={entries}
+              onJoinFantasy={(contest, team) => { setJoinTeam(team || null); setJoinContest(contest); }}
+              onMoneyChanged={loadAll}
+            />
           </TabsContent>
 
           <TabsContent value="entries" className="mt-6">
@@ -229,6 +252,13 @@ export default function UserApp() {
                         <StatusBadge status={e.status} />
                       </div>
                       <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "razorpay" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-online-${e.id}`}>Paid online · {e.razorpay_payment_id}</span> : e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : `UTR: ${e.utr || "—"}`}</div>
+                      {e.team_name && (
+                        <div className="text-xs text-zinc-500 mt-1" data-testid={`entry-team-${e.id}`}>
+                          <Flag size={12} weight="fill" className="inline mr-1 text-emerald-600" />Team {e.team_name}
+                          {e.fantasy_points != null && <> · <b className="text-zinc-800 tabular">{e.fantasy_points} pts</b></>}
+                          {e.fantasy_rank && <> · Rank <b className="text-zinc-800 tabular">#{e.fantasy_rank}</b></>}
+                        </div>
+                      )}
                       {e.status === "won" && (
                         <div className="text-sm font-bold text-orange-700 mt-1 tabular">🏆 Prize: {money(e.winner_prize)}</div>
                       )}
@@ -304,7 +334,7 @@ export default function UserApp() {
         </Tabs>
       </main>
 
-      <JoinDialog contest={joinContest} onClose={() => setJoinContest(null)} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} onTopUp={() => setTopUpOpen(true)} />
+      <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} onTopUp={() => setTopUpOpen(true)} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} />
       <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} />
     </div>
@@ -323,9 +353,10 @@ function useCountdown(iso) {
   return { over: false, urgent: diff < 3600000, text: d > 0 ? `${d}d ${pad(h)}h ${pad(m)}m` : `${pad(h)}:${pad(m)}:${pad(s)}` };
 }
 
-function ContestCard({ contest, onJoin }) {
+function ContestCard({ contest, onJoin, onFantasy }) {
   const cd = useCountdown(contest.match_time);
   const closed = contest.status !== "open" || (cd && cd.over);
+  const isFantasy = contest.kind === "fantasy";
   const share = () => {
     const text = `🏏 Join "${contest.title}" on PitchPlay!\nEntry ₹${contest.entry_fee} · Prize pool ₹${contest.prize_pool}\n${window.location.origin}/?contest=${contest.id}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
@@ -334,7 +365,14 @@ function ContestCard({ contest, onJoin }) {
     <div className="group bg-white border border-zinc-200 rounded-lg p-6 hover:border-emerald-400 hover:-translate-y-1 transition-all duration-200" data-testid={`contest-card-${contest.id}`}>
       <div className="flex items-start justify-between">
         <div>
-          <StatusBadge status={contest.status} />
+          <div className="flex items-center gap-2">
+            <StatusBadge status={contest.status} />
+            {isFantasy && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider" data-testid={`fantasy-chip-${contest.id}`}>
+                <Flag size={11} weight="fill" /> Fantasy · {contest.match_label}
+              </span>
+            )}
+          </div>
           <h3 className="font-heading text-xl font-bold text-zinc-950 mt-3 group-hover:text-emerald-700 transition-colors">
             {contest.title}
           </h3>
@@ -373,7 +411,16 @@ function ContestCard({ contest, onJoin }) {
         <div className="text-xs text-zinc-500 tabular">
           {contest.participants_count}/{contest.max_participants} joined
         </div>
-        {contest.external_link ? (
+        {isFantasy ? (
+          <Button
+            disabled={closed}
+            onClick={onFantasy}
+            className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95"
+            data-testid={`fantasy-build-btn-${contest.id}`}
+          >
+            <Flag size={16} weight="fill" className="mr-1" /> {closed ? "Contest closed" : "Build XI & join"}
+          </Button>
+        ) : contest.external_link ? (
           <a href={contest.external_link} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold px-4 py-2 active:scale-95 transition-transform"
             data-testid={`card-play-link-${contest.id}`}>
@@ -398,7 +445,7 @@ function ContestCard({ contest, onJoin }) {
   );
 }
 
-function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 0, onTopUp }) {
+function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBalance = 0, onTopUp }) {
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -412,6 +459,21 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 
   useEffect(() => { setUtr(""); setFile(null); setShowManual(!rzpOn); }, [contest, rzpOn]);
 
   if (!contest) return null;
+  if (contest.kind === "fantasy" && !team) {
+    return (
+      <Dialog open onOpenChange={(v) => !v && onClose()}>
+        <DialogContent className="max-w-sm" data-testid="fantasy-team-needed">
+          <DialogHeader>
+            <DialogTitle className="font-heading text-2xl font-extrabold tracking-tight">Pick your XI first</DialogTitle>
+            <DialogDescription>Fantasy contests need a saved team of 11 players. Build one in the Fantasy tab, then come back to join.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} data-testid="team-needed-close">Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   const fee = Number(contest.entry_fee || 0);
   const canWallet = walletBalance >= fee && fee > 0;
@@ -422,7 +484,7 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 
   const payFromWallet = async () => {
     setWalletPaying(true);
     try {
-      const { data } = await api.post("/entries/wallet", { contest_id: contest.id });
+      const { data } = await api.post("/entries/wallet", { contest_id: contest.id, team_id: team?.id || null });
       toast.success("Paid from wallet! You're in.");
       onClose();
       onPaid?.(data);
@@ -437,7 +499,7 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 
   const payOnline = async () => {
     setPaying(true);
     try {
-      const entry = await payForContest(contest);
+      const entry = await payForContest(contest, team?.id);
       toast.success("Payment successful! You're in.");
       onClose();
       onPaid?.(entry);
@@ -457,6 +519,7 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 
       const fd = new FormData();
       fd.append("contest_id", contest.id);
       fd.append("utr", utr);
+      if (team) fd.append("team_id", team.id);
       fd.append("screenshot", file);
       await api.post("/entries", fd, { headers: { "Content-Type": "multipart/form-data" } });
       toast.success("Entry submitted. Waiting for admin approval.");
@@ -479,6 +542,16 @@ function JoinDialog({ contest, onClose, config, onDone, onPaid, walletBalance = 
             {rzpOn ? " Pay online for instant approval." : " Pay to the admin UPI below, then upload the payment screenshot."}
           </DialogDescription>
         </DialogHeader>
+
+        {team && (
+          <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3" data-testid="joining-with-team">
+            <div className="min-w-0">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-800">Playing with team</div>
+              <div className="font-heading font-extrabold text-emerald-900 truncate" data-testid="joining-team-name">{team.name}</div>
+            </div>
+            <div className="text-xs text-emerald-800 tabular shrink-0">{team.credits_used} credits</div>
+          </div>
+        )}
 
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center justify-between gap-3" data-testid="wallet-pay-box">
           <div className="min-w-0">
