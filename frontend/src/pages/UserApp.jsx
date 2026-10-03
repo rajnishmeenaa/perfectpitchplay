@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
@@ -13,6 +13,7 @@ import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowS
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
+import { alertNewInboxItems } from "../lib/notifications";
 import FantasyApp from "./FantasyApp";
 import { useNavigate } from "react-router-dom";
 
@@ -126,10 +127,12 @@ export default function UserApp() {
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [justJoined, setJustJoined] = useState(null);
   const [notifyToken, setNotifyToken] = useState(0);
+  const [legal, setLegal] = useState(null);
+  const [termsOpen, setTermsOpen] = useState(false);
 
   const loadAll = async () => {
     try {
-      const [c, e, w, cfg, me, h, win] = await Promise.all([
+      const [c, e, w, cfg, me, h, win, lg] = await Promise.all([
         api.get("/contests"),
         api.get("/entries/mine"),
         api.get("/withdrawals/mine"),
@@ -137,6 +140,7 @@ export default function UserApp() {
         api.get("/auth/me"),
         api.get("/wallet/history"),
         api.get("/winners"),
+        api.get("/legal/config"),
       ]);
       setContests(c.data);
       setEntries(e.data);
@@ -145,6 +149,7 @@ export default function UserApp() {
       setUser(me.data);
       setHistory(h.data);
       setWinners(win.data);
+      setLegal(lg.data);
       setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
@@ -158,6 +163,8 @@ export default function UserApp() {
   if (user && !user.mobile) {
     return <MobileGate name={user.name} onSaved={loadAll} setMobile={setMobile} onLogout={doLogout} />;
   }
+
+  const mustAccept = !!legal && !legal.accepted;
 
   return (
     <div className="min-h-screen bg-zinc-100" data-testid="user-app">
@@ -335,9 +342,68 @@ export default function UserApp() {
       </main>
 
       <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} onTopUp={() => setTopUpOpen(true)} />
-      <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} />
+      <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} config={config} />
       <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} />
+      {legal && (mustAccept || termsOpen) && (
+        <TermsGate legal={legal} locked={mustAccept} onAccepted={loadAll} onClose={() => setTermsOpen(false)} />
+      )}
+      <footer className="max-w-7xl mx-auto px-6 pb-10 -mt-2">
+        <button type="button" onClick={() => setTermsOpen(true)}
+          className="text-xs text-zinc-500 hover:text-emerald-700 underline underline-offset-4" data-testid="open-terms-btn">
+          Terms, skill-game notice & eligibility {legal?.accepted ? `(accepted v${legal.accepted_version || "1.0"})` : "— please read and accept"}
+        </button>
+      </footer>
     </div>
+  );
+}
+
+function TermsGate({ legal, locked, onAccepted, onClose }) {
+  const [age, setAge] = useState(!!legal.age_confirmed);
+  const [busy, setBusy] = useState(false);
+
+  const accept = async () => {
+    if (!age) { toast.error("Please confirm you are 18 or older"); return; }
+    setBusy(true);
+    try {
+      await api.post("/legal/accept", { terms_version: legal.terms_version, age_confirmed: true });
+      toast.success("Thanks — you're all set");
+      onAccepted();
+      if (!locked) onClose?.();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not record your acceptance");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v && !locked) onClose?.(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="terms-gate">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-2xl font-extrabold tracking-tight">{legal.terms_title}</DialogTitle>
+          <DialogDescription>Version {legal.terms_version} · one-time confirmation before you play or withdraw.</DialogDescription>
+        </DialogHeader>
+        <div className="text-sm text-zinc-700 leading-relaxed whitespace-pre-line bg-zinc-50 border border-zinc-200 rounded-lg p-4" data-testid="terms-body">
+          {legal.terms_body}
+        </div>
+        <div className="flex items-start gap-2 mt-1">
+          <input id="age-confirm" type="checkbox" checked={age} onChange={(e) => setAge(e.target.checked)}
+            className="mt-1 h-4 w-4 accent-emerald-600" data-testid="terms-age-checkbox" />
+          <label htmlFor="age-confirm" className="text-sm text-zinc-800 font-semibold">
+            I am 18 or older, and real-money skill games are legal where I live.
+          </label>
+        </div>
+        <DialogFooter className="items-center gap-2 sm:gap-2">
+          {!locked && (
+            <Button variant="outline" onClick={onClose} data-testid="terms-close">Close</Button>
+          )}
+          <Button disabled={busy || !age} onClick={accept} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="terms-accept-btn">
+            <ShieldCheck size={16} weight="bold" className="mr-1" /> {busy ? "Saving…" : "I accept, continue"}
+          </Button>
+        </DialogFooter>
+        {locked && <p className="text-[11px] text-zinc-500 w-full text-right">You must accept before joining a contest or requesting a withdrawal.</p>}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -644,15 +710,21 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
   );
 }
 
-function WithdrawDialog({ open, onClose, balance, onDone }) {
+function WithdrawDialog({ open, onClose, balance, onDone, config = {} }) {
   const [amt, setAmt] = useState("");
   const [upi, setUpi] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const min = Number(config.min_withdrawal || 0);
+  const dayCap = Number(config.max_withdrawal_per_day || 0);
+  const upiOk = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$/.test(upi.trim());
+
   const submit = async () => {
     const n = parseFloat(amt);
     if (!n || n <= 0) { toast.error("Enter a valid amount"); return; }
+    if (min && n < min) { toast.error(`Minimum withdrawal is ${money(min)}`); return; }
     if (!upi.trim()) { toast.error("Enter your UPI ID"); return; }
+    if (!upiOk) { toast.error("Enter a valid UPI ID, for example name@bank"); return; }
     setBusy(true);
     try {
       await api.post("/withdrawals", { amount: n, upi_id: upi.trim() });
@@ -675,11 +747,21 @@ function WithdrawDialog({ open, onClose, balance, onDone }) {
           <div>
             <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Amount (₹)</Label>
             <Input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" className="mt-2 tabular" data-testid="input-amount" />
+            {(min || dayCap) && (
+              <div className="text-[11px] text-zinc-500 mt-1 tabular" data-testid="withdrawal-limits">
+                {min ? <>Minimum {money(min)}{dayCap ? " · " : ""}</> : null}
+                {dayCap ? <>Up to {money(dayCap)} per day</> : null}
+              </div>
+            )}
           </div>
           <div>
             <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Your UPI ID</Label>
             <Input value={upi} onChange={(e) => setUpi(e.target.value)} placeholder="you@upi" className="mt-2" data-testid="input-upi" />
+            {upi.trim() && !upiOk && (
+              <div className="text-[11px] text-red-600 mt-1" data-testid="upi-format-hint">Format: name@bank (the exact ID that should receive the money)</div>
+            )}
           </div>
+          <p className="text-[11px] text-zinc-500">Money is held from your wallet as soon as you request. If the payout is rejected it returns to your wallet automatically.</p>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -697,11 +779,20 @@ function NotificationBell({ refreshToken }) {
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
+  const prevUnread = useRef(0);
 
   const loadCount = useCallback(async () => {
     try {
       const { data } = await api.get("/notifications/unread-count");
-      setUnread(data.unread || 0);
+      const n = data.unread || 0;
+      setUnread(n);
+      // New mail while the app is open -> raise a native alert too.
+      if (n > prevUnread.current) {
+        prevUnread.current = n;
+        try { alertNewInboxItems((await api.get("/notifications")).data); } catch (_e) { /* ignore */ }
+      } else if (n === 0) {
+        prevUnread.current = 0;
+      }
     } catch (_e) { /* ignore */ }
   }, []);
 

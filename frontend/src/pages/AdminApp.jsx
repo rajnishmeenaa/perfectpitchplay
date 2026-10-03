@@ -8,11 +8,12 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning, Flag } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning, Flag, ShieldCheck } from "@phosphor-icons/react";
 import { Switch } from "../components/ui/switch";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import AdminFantasy from "./AdminFantasy";
+import AdminGuardrails from "./AdminGuardrails";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const toLocalInput = (iso) => { const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -42,6 +43,7 @@ const sections = [
   { key: "withdrawals", label: "Withdrawals", icon: CurrencyInr },
   { key: "users", label: "Users", icon: Users },
   { key: "payment", label: "Payment settings", icon: Gear },
+  { key: "guardrails", label: "Guardrails & legal", icon: ShieldCheck },
 ];
 
 export default function AdminApp() {
@@ -93,6 +95,7 @@ export default function AdminApp() {
         {active === "withdrawals" && <WithdrawalsPanel />}
         {active === "users" && <UsersPanel />}
         {active === "payment" && <PaymentSettingsPanel />}
+        {active === "guardrails" && <AdminGuardrails />}
       </main>
     </div>
   );
@@ -203,6 +206,17 @@ function ContestsPanel() {
     load();
   };
 
+  const refund = async (c) => {
+    if (!window.confirm(`Refund every paid entry of "${c.title}" back to user wallets? Use this when a contest is cancelled.`)) return;
+    try {
+      const { data } = await api.post(`/contests/${c.id}/refund`);
+      toast.success(data.refunded ? `Refunded ${data.refunded} entries (${money(data.amount)})` : "Nothing to refund");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Refund failed");
+    }
+  };
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -250,6 +264,9 @@ function ContestsPanel() {
                     ) : (
                       <Button size="sm" variant="outline" onClick={() => toggle(c, "open")} data-testid={`open-contest-${c.id}`}>Reopen</Button>
                     )}
+                    <Button size="sm" variant="ghost" className="text-amber-700" title="Refund all paid entries (cancelled contest)" onClick={() => refund(c)} data-testid={`refund-contest-${c.id}`}>
+                      <CurrencyInr size={16} />
+                    </Button>
                     <Button size="sm" variant="ghost" className="text-red-600" onClick={() => del(c)} data-testid={`delete-contest-${c.id}`}>
                       <Trash size={16} />
                     </Button>

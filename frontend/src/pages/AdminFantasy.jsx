@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
+import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
@@ -653,6 +654,7 @@ function ScorecardPanel({ match, onMatchChanged }) {
 
   return (
     <div className="space-y-4">
+      <LiveScoreImport match={match} onFill={(lines) => setRows((cur) => applyImportedLines(cur, lines))} />
       <div className="bg-white border border-zinc-200 rounded-lg p-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-zinc-600">
           Enter each player's match figures. <b>OUT</b> marks a dismissal (duck penalty applies), <b>OVO</b> accepts overs as <span className="font-mono">3.2</span> = 3 overs 2 balls.
@@ -714,6 +716,194 @@ function ScorecardPanel({ match, onMatchChanged }) {
       <p className="text-[11px] text-zinc-500 flex items-center gap-1.5" data-testid="scorecard-footnote">
         <ShieldCheck size={13} weight="bold" className="text-emerald-600" /> Points follow the Dream11 T20 scheme (run +1, four +1, six +2, 50 +8, wicket +25, bowled/LBW +8, maiden +12, catch +8, stumping +12, direct run out +12, playing XI +4, strike-rate and economy bands). Captain 2x and vice-captain 1.5x are applied per team at settlement.
       </p>
+    </div>
+  );
+}
+
+/** Merge imported provider lines into the scorecard form rows (the admin still reviews and saves). */
+export function applyImportedLines(rows, lines) {
+  const byId = {};
+  (lines || []).forEach((l) => { byId[l.player_id] = l; });
+  return rows.map((r) => {
+    const l = byId[r.player_id];
+    if (!l) return r;
+    return {
+      ...r,
+      played: l.played !== false,
+      runs: l.runs, balls: l.balls, fours: l.fours, sixes: l.sixes, out: !!l.out,
+      overs: ballsToOvers(l.balls_bowled), runs_conceded: l.runs_conceded, wickets: l.wickets,
+      maidens: l.maidens, bowled_or_lbw: l.bowled_or_lbw, catches: l.catches, stumpings: l.stumpings,
+      run_out_direct: l.run_out_direct, run_out_thrower: l.run_out_thrower,
+    };
+  });
+}
+
+function LiveScoreImport({ match, onFill }) {
+  const [cfg, setCfg] = useState(null);
+  const [key, setKey] = useState("");
+  const [extId, setExtId] = useState("");
+  const [feed, setFeed] = useState("scorecard");
+  const [live, setLive] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const loadCfg = async () => {
+    try { setCfg((await api.get("/admin/scores/config")).data); } catch (e) { setCfg({ key_present: false, env_key_set: false }); }
+  };
+  useEffect(() => { loadCfg(); }, []);
+
+  const saveKey = async () => {
+    if (key.trim().length < 6) { toast.error("Paste a valid API key"); return; }
+    setBusy(true);
+    try {
+      await api.put("/admin/scores/config", { cricapi_key: key.trim() });
+      setKey("");
+      toast.success("API key saved");
+      loadCfg();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not save key");
+    } finally { setBusy(false); }
+  };
+
+  const fetchLive = async () => {
+    setBusy(true);
+    try {
+      setLive((await api.get("/admin/scores/live")).data.matches);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not list live matches");
+    } finally { setBusy(false); }
+  };
+
+  const runImport = async () => {
+    if (!extId.trim()) { toast.error("Enter the match id from the score service"); return; }
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/admin/matches/${match.id}/import-scorecard`, { external_id: extId.trim(), feed });
+      setPreview(data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Import failed");
+      setPreview(null);
+    } finally { setBusy(false); }
+  };
+
+  const apply = () => {
+    if (!preview) return;
+    onFill(preview.lines);
+    toast.success(`Filled ${preview.lines.length} players — review the numbers, then save`);
+  };
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg" data-testid="live-score-import">
+      <button type="button" onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left" data-testid="live-score-toggle">
+        <span className="flex items-center gap-2">
+          <Lightning size={16} weight="fill" className="text-orange-600" />
+          <span className="font-heading font-extrabold text-zinc-950 text-sm">Import scorecard from live scores</span>
+          <span className={`text-[10px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded ${cfg && cfg.key_present ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-600"}`} data-testid="live-score-state">
+            {cfg ? (cfg.key_present ? "connected" : "no api key") : "loading"}
+          </span>
+        </span>
+        <span className="text-xs font-bold text-zinc-500">{open ? "Hide" : "Show"}</span>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-zinc-100 pt-3 space-y-3">
+          {!cfg ? <div className="text-sm text-zinc-500">Loading…</div> : !cfg.key_present ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2" data-testid="live-score-setup">
+              <div className="text-sm text-amber-900">Add a free <b>CricAPI / CricketData.org</b> key to pull player stats automatically. Manual entry always works without it.</div>
+              <div className="flex flex-wrap gap-2">
+                <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="paste api key" type="password" className="max-w-xs tabular" data-testid="scores-key-input" />
+                <Button size="sm" disabled={busy} onClick={saveKey} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="scores-key-save">{busy ? "Saving…" : "Save key"}</Button>
+              </div>
+              <div className="text-[11px] text-amber-800">Prefer a server variable? Set CRICAPI_KEY on the backend and it is used automatically.</div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-[180px]">
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Match id on the score service</Label>
+                  <Input value={extId} onChange={(e) => setExtId(e.target.value)} placeholder="e.g. 984321" className="mt-1 tabular" data-testid="scores-ext-id" />
+                </div>
+                <div>
+                  <Label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Feed</Label>
+                  <select value={feed} onChange={(e) => setFeed(e.target.value)} className="mt-1 block rounded-md border border-zinc-200 bg-white px-2 py-2 text-sm" data-testid="scores-feed">
+                    <option value="scorecard">Full scorecard</option>
+                    <option value="fantasy">Fantasy feed</option>
+                  </select>
+                </div>
+                <Button size="sm" disabled={busy} onClick={runImport} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="scores-import-btn">
+                  <ChartBar size={15} weight="bold" className="mr-1" /> {busy ? "Working…" : "Import & preview"}
+                </Button>
+                <Button size="sm" variant="outline" disabled={busy} onClick={fetchLive} className="rounded-full font-bold" data-testid="scores-live-btn">
+                  <Trophy size={15} className="mr-1" /> Live matches
+                </Button>
+              </div>
+
+              {live && (
+                <div className="border border-zinc-200 rounded-md max-h-40 overflow-y-auto divide-y divide-zinc-100" data-testid="scores-live-list">
+                  {live.length === 0 && <div className="p-3 text-sm text-zinc-500">No live matches right now.</div>}
+                  {live.map((m) => (
+                    <button key={m.external_id} type="button" onClick={() => setExtId(String(m.external_id))}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-50 flex items-center gap-2" data-testid={`live-item-${m.external_id}`}>
+                      <span className="font-bold text-zinc-800 truncate flex-1">{m.name}</span>
+                      <span className="text-zinc-500 truncate max-w-[160px]">{m.status}</span>
+                      <span className="font-mono text-[10px] text-zinc-400">{m.external_id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {preview && (
+                <div className="border border-emerald-200 bg-emerald-50/60 rounded-md p-3 space-y-2" data-testid="scores-preview">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm text-emerald-900">
+                      <b>{preview.match_title || "Match"}</b> · {preview.status || "no status"} · {preview.players_found} performances found,
+                      {" "}<b>{preview.lines.length}</b> matched to your squads.
+                    </div>
+                    <Button size="sm" onClick={apply} className="rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold" data-testid="scores-fill-btn">
+                      <Check size={15} weight="bold" className="mr-1" /> Fill the form
+                    </Button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-x-4 text-xs">
+                    <div>
+                      <div className="font-bold uppercase tracking-widest text-[10px] text-emerald-800 mb-1">Matched</div>
+                      <div className="max-h-32 overflow-y-auto space-y-0.5">
+                        {preview.lines.map((l) => (
+                          <div key={l.player_id} className="flex justify-between gap-2" data-testid={`imp-${l.player_id}`}>
+                            <span className="truncate text-zinc-800">{l.squad_name} <span className="text-zinc-400">({l.source_name})</span></span>
+                            <span className="text-zinc-600 tabular shrink-0">{l.runs}{l.balls ? ` (${l.balls})` : ""}{l.wickets ? ` · ${l.wickets}/${l.runs_conceded} (${ballsToOvers(l.balls_bowled)})` : ""}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      {preview.unmatched.length > 0 && (
+                        <div>
+                          <div className="font-bold uppercase tracking-widest text-[10px] text-amber-800 mb-1">Not matched — check squad spelling</div>
+                          {preview.unmatched.map((u) => (
+                            <div key={u.source_name} className="flex justify-between gap-2 text-amber-900" data-testid={`unmatched-${u.source_name}`}>
+                              <span className="truncate">{u.source_name}</span>
+                              <span className="text-[10px]">{u.best_guess ? `closest: ${u.best_guess} (${u.confidence})` : "no similar name"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {preview.squad_without_stats.length > 0 && (
+                        <div>
+                          <div className="font-bold uppercase tracking-widest text-[10px] text-zinc-500 mb-1">Squad players with no stats ({preview.squad_without_stats.length})</div>
+                          <div className="text-zinc-600">{preview.squad_without_stats.map((s) => s.player).join(", ")}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-emerald-800">Nothing is saved yet — this only pre-fills the form below so you can correct anything and then save.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

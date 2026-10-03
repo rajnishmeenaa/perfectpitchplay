@@ -4,6 +4,7 @@ import { Button } from "../components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
+import { isNative, notificationPermission, syncReminders } from "../lib/notifications";
 import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -51,6 +52,16 @@ export default function FantasyApp({ config, walletBalance = 0, focusMatchId, en
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
 
+  // Keeps the phone's reminder schedule in sync: "build your XI" if we have no team
+  // for a match yet, "locks in 10 minutes" once we do.
+  const remind = (rows, coveredOverride = null) => {
+    if (!isNative()) return;
+    const covered = {};
+    rows.forEach((m) => { covered[m.id] = (m.my_teams_count || 0) > 0; });
+    if (coveredOverride) Object.assign(covered, coveredOverride);
+    syncReminders(rows, covered);
+  };
+
   const loadMatches = async () => {
     try {
       const { data } = await api.get("/matches");
@@ -58,6 +69,8 @@ export default function FantasyApp({ config, walletBalance = 0, focusMatchId, en
       const ordered = [...data].sort((a, b) => (a.locked === b.locked ? new Date(a.start_time) - new Date(b.start_time) : a.locked ? 1 : -1));
       setMatches(ordered);
       setMatchId((cur) => cur || focusMatchId || (ordered[0] && ordered[0].id) || null);
+      if (isNative()) notificationPermission(); // asks once, here because the user is opting into fantasy
+      remind(ordered);
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not load matches");
     }
@@ -76,6 +89,9 @@ export default function FantasyApp({ config, walletBalance = 0, focusMatchId, en
     try {
       const { data } = await api.get(`/matches/${id}`);
       setDetail(data);
+      const hasTeam = (data.my_teams || []).length > 0
+        || (data.contests || []).some((c) => (c.my_entries || []).length > 0);
+      remind(matches, { [id]: hasTeam });
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not load match");
       setDetail(null);

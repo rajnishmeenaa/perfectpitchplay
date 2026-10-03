@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { Button } from "../components/ui/button";
@@ -16,9 +16,11 @@ export default function Landing() {
   const [form, setForm] = useState({ name: "", mobile: "", password: "" });
   const [busy, setBusy] = useState(false);
 
-  if (user) {
-    navigate(user.role === "admin" ? "/admin" : "/app", { replace: true });
-  }
+  // Already signed in? Go straight to the right lobby (in an effect, so React
+  // doesn't see a router update triggered from another component's render).
+  useEffect(() => {
+    if (user) navigate(user.role === "admin" ? "/admin" : "/app", { replace: true });
+  }, [user, navigate]);
 
   const submit = async (e) => {
     e.preventDefault();

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Android 15+ forces edge-to-edge (content slides under the status bar).
+         Opt back out and keep the classic status bar, like other apps. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="android:background">@drawable/splash</item>
+        <item name="android:statusBarColor">#01544D</item>
+        <item name="android:windowOptOutEdgeToEdgeEnforcement">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">default</item>
+    </style>
+</resources>

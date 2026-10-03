@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
 import logging
 import uuid
 import requests
@@ -477,7 +478,7 @@ def compute_player_points(s: PlayerScoreIn, role: str, playing_xi: bool = True) 
         p["run_out_thrower"] = int(s.run_out_thrower) * 6
 
     p = {k: v for k, v in p.items() if v}
-    return {"total": round(sum(p.values()), 2), "components": p}
+    return {"total": float(round(sum(p.values()), 2)), "components": p}
 
 
 def team_points(player_points: dict, team: dict, names: Optional[dict] = None) -> dict:
@@ -571,12 +572,14 @@ async def get_joinable_contest(contest_id: str, user: dict) -> dict:
     if contest.get("kind") == "fantasy":
         # Fantasy contests allow several entries per user (one per saved team);
         # the cap is enforced per contest via max_teams_per_user in resolve_entry_team.
+        await enforce_entry_caps(contest, user)
         return contest
     existing = await db.entries.find_one(
         {"contest_id": contest_id, "user_id": user["id"], "status": {"$in": ["pending", "approved", "won"]}}
     )
     if existing:
         raise HTTPException(status_code=400, detail="You already have an entry for this contest")
+    await enforce_entry_caps(contest, user)
     return contest
 
 
@@ -1324,8 +1327,10 @@ async def declare_winner(entry_id: str, body: DeclareWinnerBody, admin=Depends(r
 @api_router.get("/wallet/config")
 async def wallet_config(user=Depends(get_current_user)):
     s = await get_payment_settings()
+    g = await get_guard_settings()
     return {"admin_upi_id": s["upi_id"], "payee_name": s.get("payee_name", ""), "instructions": s.get("instructions", ""), "qr_path": s.get("qr_path"),
-            "manual_upi_enabled": s.get("manual_upi_enabled", True), "razorpay_enabled": rzp_client is not None, "razorpay_key_id": RZP_KEY_ID if rzp_client else None}
+            "manual_upi_enabled": s.get("manual_upi_enabled", True), "razorpay_enabled": rzp_client is not None, "razorpay_key_id": RZP_KEY_ID if rzp_client else None,
+            "min_withdrawal": float(g.get("min_withdrawal") or 0), "max_withdrawal_per_day": float(g.get("max_withdrawal_per_day") or 0)}
 
 
 @api_router.get("/wallet/history")
@@ -1416,9 +1421,29 @@ async def admin_remove_qr(admin=Depends(require_admin)):
 async def create_withdrawal(body: WithdrawalCreate, user=Depends(get_current_user)):
     if user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot request withdrawal")
+    g = await get_guard_settings()
+    await require_terms(user)
+    upi = (body.upi_id or "").strip()
+    if not UPI_RE.match(upi):
+        raise HTTPException(status_code=400, detail="Enter a valid UPI ID (for example name@bank)")
+    if not user.get("mobile"):
+        raise HTTPException(status_code=400, detail="Add your mobile number before withdrawing")
     balance = user.get("wallet_balance", 0.0)
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+    if body.amount < float(g.get("min_withdrawal") or 0):
+        raise HTTPException(status_code=400, detail=f"Minimum withdrawal is {inr(g['min_withdrawal'])}")
+    day_cap = float(g.get("max_withdrawal_per_day") or 0)
+    if day_cap:
+        already = 0.0
+        async for w in db.withdrawals.find(
+            {"user_id": user["id"], "status": {"$ne": "rejected"}, "created_at": {"$gte": day_start_iso()}},
+            {"_id": 0, "amount": 1},
+        ):
+            already += float(w.get("amount") or 0)
+        if already + body.amount > day_cap:
+            left = max(day_cap - already, 0)
+            raise HTTPException(status_code=400, detail=f"Daily withdrawal limit is {inr(day_cap)}. You can request {inr(left)} more today.")
     if body.amount > balance:
         raise HTTPException(status_code=400, detail="Insufficient wallet balance")
     # Deduct immediately (held) — refund on rejection
@@ -1429,7 +1454,7 @@ async def create_withdrawal(body: WithdrawalCreate, user=Depends(get_current_use
         "user_name": user["name"],
         "user_mobile": user["mobile"],
         "amount": body.amount,
-        "upi_id": body.upi_id,
+        "upi_id": upi,
         "status": "pending",
         "created_at": now_iso(),
     }
@@ -1766,6 +1791,15 @@ async def admin_update_match(match_id: str, body: MatchUpdate, admin=Depends(req
     if updated.get("status") in ("live", "completed", "abandoned"):
         contest_set["status"] = "closed"
     await db.contests.update_many({"match_id": match_id, "kind": "fantasy"}, {"$set": contest_set})
+    if updated.get("status") == "abandoned":
+        g = await get_guard_settings()
+        if g.get("refund_on_abandon", True):
+            contest_ids = [c["id"] for c in await db.contests.find({"match_id": match_id}, {"_id": 0, "id": 1}).to_list(500)]
+            if contest_ids:
+                paid = await db.entries.find({"contest_id": {"$in": contest_ids}, "status": {"$in": ["approved", "pending"]}}, {"_id": 0}).to_list(5000)
+                updated["refund"] = await refund_entries(paid, "Match abandoned")
+        else:
+            updated["refund"] = {"refunded": 0, "amount": 0, "note": "Auto-refund is switched off in guardrails"}
     updated["locked"] = match_locked(updated)
     return updated
 
@@ -2225,6 +2259,519 @@ async def fantasy_leaderboard(contest_id: str, user=Depends(get_current_user)):
         "scorecard_entered": bool(match.get("scorecard_entered")),
         "leaderboard": rows,
     }
+
+
+# ---------- External live scores (CricAPI / CricketData.org) ----------
+CRICAPI_KEY_ENV = os.environ.get("CRICAPI_KEY", "").strip()
+CRICAPI_BASE = (os.environ.get("CRICAPI_BASE") or "https://api.cricapi.com/v1").rstrip("/")
+
+
+async def get_score_settings() -> dict:
+    """Live-score provider config. The key may come from the admin panel or CRICAPI_KEY env."""
+    s = await db.settings.find_one({"key": "scores"}, {"_id": 0}) or {}
+    admin_key = (s.get("cricapi_key") or "").strip()
+    return {
+        "provider": s.get("provider") or "cricapi",
+        "admin_key_set": bool(admin_key),
+        "env_key_set": bool(CRICAPI_KEY_ENV),
+        "key_present": bool(admin_key or CRICAPI_KEY_ENV),
+        "enabled": bool(s.get("enabled", True)),
+        "base_url": CRICAPI_BASE,
+    }
+
+
+async def score_api_key() -> str:
+    s = await get_score_settings()
+    if not s["enabled"]:
+        raise HTTPException(status_code=400, detail="Live-score import is switched off in settings")
+    key = await db.settings.find_one({"key": "scores"}, {"_id": 0}) or {}
+    return (key.get("cricapi_key") or "").strip() or CRICAPI_KEY_ENV
+
+
+def cric_call(endpoint: str, params: dict, api_key: str) -> dict:
+    q = dict(params or {})
+    q["apikey"] = api_key
+    try:
+        resp = requests.get(f"{CRICAPI_BASE}/{endpoint}", params=q, timeout=30,
+                            headers={"User-Agent": "PitchPlay/1.0"})
+    except requests.RequestException as e:
+        raise HTTPException(status_code=502, detail=f"Could not reach the score service: {e}")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Score service returned HTTP {resp.status_code}")
+    try:
+        data = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Score service returned a non-JSON response")
+    if isinstance(data, dict) and data.get("status") not in (None, "success"):
+        raise HTTPException(status_code=400, detail=f"Score service: {data.get('reason') or data.get('status')}")
+    return data
+
+
+def _num(v, default=0.0) -> float:
+    if v is None:
+        return default
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(",", "")
+    if s in ("", "-", "null", "None", "N/A"):
+        return default
+    try:
+        return float(s.split(" ")[0])
+    except ValueError:
+        return default
+
+
+def overs_to_balls(v) -> int:
+    """CricAPI reports overs as '4.2' (4 overs 2 balls)."""
+    f = _num(v)
+    whole = int(f)
+    frac = int(round((f - whole) * 10))
+    return whole * 6 + min(max(frac, 0), 5)
+
+
+NOT_OUT_WORDS = ("not out", "did not bat", "unused sub", "did not bowl", "dnb", "batting")
+BOWLER_TAIL_RE = re.compile(r"\bb\s+(.+?)\s*$")
+LBW_RE = re.compile(r"\blbw\b")
+
+
+def _player_name(ref) -> str:
+    if isinstance(ref, dict):
+        return str(ref.get("name") or ref.get("playerName") or "").strip()
+    return str(ref or "").strip()
+
+
+def bowled_lbw_bowler(b: dict) -> str:
+    """Bowler credited with a bowled/LBW dismissal (Dream11 pays a +8 bonus for these).
+
+    Caught ("c Fielder b Bowler") deliberately does NOT count — only bowled and lbw do.
+    """
+    d = b.get("dismissal")
+    text = str(b.get("dismissalText") or (d if isinstance(d, str) else "") or "").strip().lower()
+    kind = str(d.get("type") or d.get("text") or "").strip().lower() if isinstance(d, dict) else ""
+    is_bowled = kind in ("b", "bowled", "lbw", "lbw b") or bool(re.match(r"^b[\s.]", text)) or bool(LBW_RE.search(text))
+    if not is_bowled:
+        return ""
+    if isinstance(d, dict):
+        named = _player_name(d.get("bowler"))
+        if named:
+            return named
+    m = BOWLER_TAIL_RE.search(text)
+    return m.group(1).strip() if m else ""
+
+
+def _norm_name(n: str) -> str:
+    keep = "".join(ch.lower() if ch.isalnum() else " " for ch in (n or ""))
+    return " ".join(keep.split())
+
+
+def _name_score(a: str, b: str) -> float:
+    """Similarity between a provider name and a squad name (handles 'K Rabada' vs 'Kagiso Rabada')."""
+    na, nb = _norm_name(a), _norm_name(b)
+    if not na or not nb:
+        return 0.0
+    if na == nb:
+        return 1.0
+    ta, tb = na.split(), nb.split()
+    if ta[-1] == tb[-1]:  # same surname
+        rest_a, rest_b = ta[:-1], tb[:-1]
+        if not rest_a or not rest_b:
+            return 0.85
+
+        def align(short_, long_):
+            return all(any(s == t or (len(s) == 1 and t.startswith(s)) for t in long_) for s in short_)
+
+        if align(rest_a, rest_b) or align(rest_b, rest_a):
+            return 0.9
+    jaccard = len(set(ta) & set(tb)) / len(set(ta) | set(tb))
+    if (len(ta) == 1 and ta[0] in tb) or (len(tb) == 1 and tb[0] in ta):
+        return max(jaccard, 0.8)
+    if len(na) >= 3 and (na in nb or nb in na):
+        return 0.85
+    return jaccard
+
+
+def merge_cric_payload(data: dict) -> dict:
+    """Flatten either CricAPI shape (per-innings `scorecard` list, or the fantasy
+    `batting`/`bowling`/`fielding` arrays) into one stats map keyed by player name."""
+    acc: dict = {}
+
+    def slot(name):
+        key = _norm_name(name)
+        if key not in acc:
+            acc[key] = {"name": name.strip(), "runs": 0, "balls": 0, "fours": 0, "sixes": 0, "out": False,
+                        "balls_bowled": 0, "runs_conceded": 0, "wickets": 0, "maidens": 0, "bowled_or_lbw": 0,
+                        "catches": 0, "stumpings": 0, "run_out_direct": 0, "run_out_thrower": 0, "played": False}
+        return acc[key]
+
+    innings = data.get("scorecard")
+    if isinstance(innings, list) and innings and isinstance(innings[0], dict) and ("batting" in innings[0] or "bowling" in innings[0]):
+        for inns in innings:
+            for b in inns.get("batting") or []:
+                name = _player_name(b.get("batsman") or b.get("player") or b.get("name"))
+                if not name:
+                    continue
+                row = slot(name)
+                row["played"] = True
+                row["runs"] += int(_num(b.get("runs")))
+                row["balls"] += int(_num(b.get("balls")))
+                row["fours"] += int(_num(b.get("fours") or b.get("4s")))
+                row["sixes"] += int(_num(b.get("sixes") or b.get("6s")))
+                disc = b.get("dismissalText") or b.get("dismissal") or b.get("out") or ""
+                disc_l = str(disc).lower()
+                row["out"] = row["out"] or bool(disc_l) and "not out" not in disc_l and "did not" not in disc_l
+                bowler = bowled_lbw_bowler(b)
+                if bowler:
+                    slot(bowler)["bowled_or_lbw"] += 1
+            for x in inns.get("bowling") or []:
+                name = _player_name(x.get("bowler") or x.get("player") or x.get("name"))
+                if not name:
+                    continue
+                row = slot(name)
+                row["played"] = True
+                row["balls_bowled"] += overs_to_balls(x.get("overs"))
+                row["runs_conceded"] += int(_num(x.get("runs") or x.get("conceded")))
+                row["wickets"] += int(_num(x.get("wickets")))
+                row["maidens"] += int(_num(x.get("maidens")))
+            for c in inns.get("catches") or []:
+                name = _player_name(c.get("catchman") or c.get("player") or c.get("name"))
+                if name:
+                    row = slot(name)
+                    row["played"] = True
+                    row["catches"] += 1
+            for st in inns.get("stumping") or inns.get("stumpings") or []:
+                name = _player_name(st.get("stumper") or st.get("player") or st.get("name"))
+                if name:
+                    row = slot(name)
+                    row["played"] = True
+                    row["stumpings"] += 1
+            for ro in inns.get("runOuts") or inns.get("runouts") or []:
+                who = ro.get("fielder") or ro.get("catcher") or ro.get("player") or ro.get("name")
+                name = _player_name(who)
+                if not name:
+                    continue
+                row = slot(name)
+                kind = str(ro.get("type") or ro.get("dismissal") or "").lower()
+                if "direct" in kind:
+                    row["run_out_direct"] += 1
+                else:
+                    row["run_out_thrower"] += 1
+        return acc
+
+    bat = data.get("batting")
+    if isinstance(bat, list):
+        for b in bat:
+            name = _player_name(b.get("playerName") or b.get("player") or b.get("name"))
+            if not name:
+                continue
+            row = slot(name)
+            row["played"] = True
+            row["runs"] += int(_num(b.get("runs")))
+            row["balls"] += int(_num(b.get("balls")))
+            row["fours"] += int(_num(b.get("fours") or b.get("4s")))
+            row["sixes"] += int(_num(b.get("sixes") or b.get("6s")))
+            disc = str(b.get("dismissal") or b.get("dismissalText") or "").lower()
+            row["out"] = bool(disc) and "not out" not in disc and "did not" not in disc
+    bowl = data.get("bowling")
+    if isinstance(bowl, list):
+        for x in bowl:
+            name = _player_name(x.get("playerName") or x.get("player") or x.get("name"))
+            if not name:
+                continue
+            row = slot(name)
+            row["played"] = True
+            row["balls_bowled"] += overs_to_balls(x.get("overs"))
+            row["runs_conceded"] += int(_num(x.get("runs") or x.get("conceded")))
+            row["wickets"] += int(_num(x.get("wickets")))
+            row["maidens"] += int(_num(x.get("maidens")))
+            row["bowled_or_lbw"] += int(_num(x.get("bowled") or x.get("bowledOrLbw") or 0))
+    field = data.get("fielding")
+    if isinstance(field, list):
+        for f in field:
+            name = _player_name(f.get("playerName") or f.get("player") or f.get("name"))
+            if not name:
+                continue
+            row = slot(name)
+            row["played"] = True
+            row["catches"] += int(_num(f.get("catches") or f.get("catch")))
+            row["stumpings"] += int(_num(f.get("stumpings") or f.get("stumping")))
+            row["run_out_direct"] += int(_num(f.get("runOutsDirect") or f.get("runouts_direct") or 0))
+            row["run_out_thrower"] += int(_num(f.get("runOuts") or f.get("runouts") or 0))
+    return acc
+
+
+def map_stats_to_squad(stats: dict, squad: list) -> tuple:
+    """Attach provider player names to our squad player ids."""
+    lines, matched, unmatched = [], [], []
+    for key, s in stats.items():
+        name = str(s.get("name") or key).strip()  # provider's original spelling for display
+        best, best_score = None, 0.0
+        for p in squad:
+            sc = _name_score(key, p["name"])
+            if sc > best_score:
+                best, best_score = p, sc
+        if best and best_score >= 0.75:
+            lines.append({
+                "player_id": best["id"], "squad_name": best["name"], "source_name": name,
+                "confidence": round(best_score, 2), "played": bool(s.get("played")),
+                "runs": s["runs"], "balls": s["balls"], "fours": s["fours"], "sixes": s["sixes"], "out": s["out"],
+                "balls_bowled": s["balls_bowled"], "runs_conceded": s["runs_conceded"], "wickets": s["wickets"],
+                "maidens": s["maidens"], "bowled_or_lbw": s["bowled_or_lbw"], "catches": s["catches"],
+                "stumpings": s["stumpings"], "run_out_direct": s["run_out_direct"], "run_out_thrower": s["run_out_thrower"],
+            })
+            matched.append({"source_name": name.strip(), "player": best["name"], "confidence": round(best_score, 2)})
+        else:
+            unmatched.append({"source_name": name.strip(), "best_guess": best["name"] if best else None,
+                             "confidence": round(best_score, 2)})
+    covered = {l["player_id"] for l in lines}
+    missing = [{"player_id": p["id"], "player": p["name"], "team": p["team"], "role": p["role"]}
+               for p in squad if p["id"] not in covered]
+    lines.sort(key=lambda l: (_norm_name(l["squad_name"])))
+    return lines, unmatched, missing
+
+
+class ScoreConfigBody(BaseModel):
+    cricapi_key: Optional[str] = None
+    enabled: Optional[bool] = None
+    provider: Optional[str] = None
+
+
+class ScoreImportBody(BaseModel):
+    external_id: str = Field(min_length=1, max_length=60)
+    feed: str = "scorecard"  # "scorecard" | "fantasy"
+
+
+@api_router.get("/admin/scores/config")
+async def admin_scores_config(admin=Depends(require_admin)):
+    s = await get_score_settings()
+    s["has_live_matches"] = s["key_present"] and s["enabled"]
+    return s
+
+
+@api_router.put("/admin/scores/config")
+async def admin_scores_put(body: ScoreConfigBody, admin=Depends(require_admin)):
+    doc = {"key": "scores", "updated_at": now_iso()}
+    if body.cricapi_key is not None:
+        doc["cricapi_key"] = body.cricapi_key.strip()
+    if body.enabled is not None:
+        doc["enabled"] = bool(body.enabled)
+    if body.provider:
+        doc["provider"] = body.provider.strip().lower()
+    await db.settings.update_one({"key": "scores"}, {"$set": doc}, upsert=True)
+    return await get_score_settings()
+
+
+@api_router.delete("/admin/scores/config/key")
+async def admin_scores_clear_key(admin=Depends(require_admin)):
+    await db.settings.update_one({"key": "scores"}, {"$unset": {"cricapi_key": ""}})
+    return await get_score_settings()
+
+
+@api_router.get("/admin/scores/live")
+async def admin_scores_live(admin=Depends(require_admin)):
+    """Current matches from the provider, so the admin can copy the right id."""
+    key = await score_api_key()
+    data = cric_call("current_matches", {}, key)
+    out = []
+    for m in data.get("data") or []:
+        out.append({
+            "external_id": m.get("unique_id") or m.get("id"),
+            "name": m.get("name") or " · ".join([str(m.get("team1") or ""), str(m.get("team2") or "")]).strip(" ·"),
+            "status": m.get("status") or m.get("state") or "",
+            "venue": m.get("venue") or "",
+            "start": m.get("startDate") or m.get("matchStarted") or "",
+            "series": m.get("seriesName") or "",
+        })
+    return {"count": len(out), "matches": out}
+
+
+@api_router.post("/admin/matches/{match_id}/import-scorecard")
+async def admin_import_scorecard(match_id: str, body: ScoreImportBody, admin=Depends(require_admin)):
+    """Preview a provider scorecard mapped onto our squad. Nothing is saved here."""
+    match = await get_match_or_404(match_id)
+    key = await score_api_key()
+    feed = (body.feed or "scorecard").strip().lower()
+    if feed not in ("scorecard", "fantasy"):
+        raise HTTPException(status_code=400, detail="Feed must be 'scorecard' or 'fantasy'")
+    data = cric_call(feed, {"id": body.external_id, "unique_id": body.external_id}, key)
+    payload = data.get("data") if isinstance(data.get("data"), dict) else data
+    stats = merge_cric_payload(payload or {})
+    if not stats:
+        raise HTTPException(status_code=400, detail="That match has no player scorecard yet on the score service")
+    squad = await get_match_players(match_id)
+    lines, unmatched, missing = map_stats_to_squad(stats, squad)
+    info = payload.get("info") or {}
+    return {
+        "external_id": body.external_id,
+        "feed": feed,
+        "match_title": info.get("matchInfo", {}).get("name") or info.get("name") or payload.get("name") or "",
+        "status": (info.get("status") or payload.get("status") or ""),
+        "players_found": len(stats),
+        "lines": lines,
+        "unmatched": unmatched,
+        "squad_without_stats": missing,
+    }
+
+
+# ---------- Guardrails, legal & refunds ----------
+GUARD_DEFAULTS = {
+    "min_withdrawal": 1,               # ₹; raise to e.g. 100 to cut payout fees
+    "max_withdrawal_per_day": 0,       # 0 = no cap
+    "max_entries_per_user_per_day": 0,  # 0 = no cap
+    "max_entries_per_user_per_contest": 0,  # 0 = no cap (fantasy uses max_teams_per_user)
+    "require_terms_acceptance": False,  # hard-block joins/withdrawals until accepted
+    "require_age_gate": False,          # hard-block until 18+ confirmed
+    "refund_on_abandon": True,
+    "terms_version": "1.0",
+    "terms_title": "Terms, skill-game notice and eligibility",
+    "terms_body": (
+        "PitchPlay hosts skill-based fantasy cricket contests. "
+        "You must be 18 or older and allowed to play real-money skill games where you live "
+        "(such games are restricted in some states). Entry fees are paid to the organiser and "
+        "winnings are credited to your in-app wallet, which you can withdraw to your own UPI. "
+        "Team selection locks at the scheduled start time; results are calculated from the "
+        "scorecard published by the organiser. Prizes are not guaranteed and you can lose your "
+        "entry fee. Play responsibly — this is not a game of chance."
+    ),
+}
+UPI_RE = re.compile(r"^[a-zA-Z0-9._\-]{2,}@[a-zA-Z]{2,}$")
+
+
+async def get_guard_settings() -> dict:
+    s = await db.settings.find_one({"key": "guardrails"}, {"_id": 0}) or {}
+    out = dict(GUARD_DEFAULTS)
+    for k in GUARD_DEFAULTS:
+        if s.get(k) is not None:
+            out[k] = s[k]
+    return out
+
+
+async def require_terms(user: dict) -> None:
+    g = await get_guard_settings()
+    if g["require_terms_acceptance"] and not user.get("terms_accepted_at"):
+        raise HTTPException(status_code=402, detail="Please accept the terms to continue")
+    if g["require_age_gate"] and not user.get("age_confirmed"):
+        raise HTTPException(status_code=402, detail="You must confirm you are 18 or older")
+
+
+@api_router.get("/legal/config")
+async def legal_config(user=Depends(get_current_user)):
+    g = await get_guard_settings()
+    return {
+        "terms_version": g["terms_version"], "terms_title": g["terms_title"], "terms_body": g["terms_body"],
+        "require_terms_acceptance": g["require_terms_acceptance"], "require_age_gate": g["require_age_gate"],
+        "accepted": bool(user.get("terms_accepted_at")), "age_confirmed": bool(user.get("age_confirmed")),
+        "accepted_version": user.get("terms_version"),
+        "needs_action": (not user.get("terms_accepted_at")) or (not user.get("age_confirmed")),
+    }
+
+
+class LegalAcceptBody(BaseModel):
+    terms_version: str = "1.0"
+    age_confirmed: bool = False
+
+
+@api_router.post("/legal/accept")
+async def legal_accept(body: LegalAcceptBody, user=Depends(get_current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$set": {
+        "terms_accepted_at": now_iso(), "terms_version": body.terms_version,
+        "age_confirmed": bool(body.age_confirmed),
+    }})
+    return {"ok": True, "terms_version": body.terms_version, "age_confirmed": bool(body.age_confirmed)}
+
+
+class GuardBody(BaseModel):
+    min_withdrawal: Optional[float] = Field(default=None, ge=0)
+    max_withdrawal_per_day: Optional[float] = Field(default=None, ge=0)
+    max_entries_per_user_per_day: Optional[float] = Field(default=None, ge=0)
+    max_entries_per_user_per_contest: Optional[float] = Field(default=None, ge=0)
+    require_terms_acceptance: Optional[bool] = None
+    require_age_gate: Optional[bool] = None
+    refund_on_abandon: Optional[bool] = None
+    terms_version: Optional[str] = Field(default=None, max_length=20)
+    terms_title: Optional[str] = Field(default=None, max_length=120)
+    terms_body: Optional[str] = Field(default=None, max_length=4000)
+
+
+@api_router.get("/admin/guardrails")
+async def admin_get_guardrails(admin=Depends(require_admin)):
+    return await get_guard_settings()
+
+
+@api_router.put("/admin/guardrails")
+async def admin_put_guardrails(body: GuardBody, admin=Depends(require_admin)):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    updates["key"] = "guardrails"
+    updates["updated_at"] = now_iso()
+    updates["updated_by"] = admin["id"]
+    await db.settings.update_one({"key": "guardrails"}, {"$set": updates}, upsert=True)
+    return await get_guard_settings()
+
+
+def day_start_iso() -> str:
+    now = datetime.now(timezone.utc)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+
+async def enforce_entry_caps(contest: dict, user: dict) -> None:
+    """Per-user entry limits, applied to every payment path via get_joinable_contest."""
+    g = await get_guard_settings()
+    per_contest = int(g.get("max_entries_per_user_per_contest") or 0)
+    if per_contest:
+        mine = await db.entries.count_documents({
+            "contest_id": contest["id"], "user_id": user["id"], "status": {"$in": ["pending", "approved", "won"]}
+        })
+        if mine >= per_contest:
+            raise HTTPException(status_code=400, detail=f"You can join at most {per_contest} time(s) per contest")
+    per_day = int(g.get("max_entries_per_user_per_day") or 0)
+    if per_day:
+        today = await db.entries.count_documents({
+            "user_id": user["id"], "status": {"$in": ["pending", "approved", "won"]},
+            "created_at": {"$gte": day_start_iso()},
+        })
+        if today >= per_day:
+            raise HTTPException(status_code=400, detail=f"Daily entry limit reached ({per_day}). Try again tomorrow.")
+    await require_terms(user)
+
+
+async def refund_entries(entries: list, reason: str) -> dict:
+    """Credit entry fees back to wallets for the given entries."""
+    refunded, total = 0, 0.0
+    for e in entries:
+        if e.get("status") == "refunded":
+            continue
+        amount = float(e.get("entry_fee") or 0)
+        await db.users.update_one({"id": e["user_id"]}, {"$inc": {"wallet_balance": amount}})
+        await db.wallet_logs.insert_one({
+            "id": str(uuid.uuid4()), "user_id": e["user_id"], "amount": amount,
+            "note": f"Refund · {e.get('contest_title') or 'contest'} · {reason}", "by": "system", "created_at": now_iso(),
+        })
+        await db.entries.update_one({"id": e["id"]}, {"$set": {
+            "status": "refunded", "refunded_at": now_iso(), "refund_reason": reason, "decision_note": reason,
+        }})
+        await push_notification(
+            e["user_id"], "refund", "Entry fee refunded",
+            f"{inr(amount)} was returned to your wallet — {reason}.",
+            {"contest_id": e.get("contest_id"), "entry_id": e["id"], "amount": amount},
+        )
+        refunded += 1
+        total += amount
+    return {"refunded": refunded, "amount": round(total, 2)}
+
+
+@api_router.post("/contests/{contest_id}/refund")
+async def refund_contest(contest_id: str, admin=Depends(require_admin)):
+    """Refund every paid entry of a cancelled contest (classic or fantasy)."""
+    contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    entries = await db.entries.find({"contest_id": contest_id, "status": {"$in": ["approved", "pending"]}}, {"_id": 0}).to_list(5000)
+    if not entries:
+        return {"refunded": 0, "amount": 0}
+    res = await refund_entries(entries, "Contest cancelled by organiser")
+    await db.contests.update_one({"id": contest_id}, {"$set": {"status": "closed", "refunded_at": now_iso()}})
+    return res
 
 
 # ---------- Startup ----------
