@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, FirstAid, CheckCircle, Coins } from "@phosphor-icons/react";
+import { Baseball as CricketBall, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, FirstAid, CheckCircle, Coins } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
@@ -18,6 +18,7 @@ import { checkForUpdate } from "../lib/appUpdate";
 import FantasyApp from "./FantasyApp";
 import { OnboardingTour, CountUp, hasSeenOnboarding, markOnboardingSeen } from "../components/onboarding";
 import { ReferralCard, BadgeShelf, SeasonLadder } from "../components/growth";
+import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -137,6 +138,8 @@ export default function UserApp() {
   const [update, setUpdate] = useState(null);
   const [safety, setSafety] = useState(null);
   const [tour, setTour] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [focusSection, setFocusSection] = useState(null);
 
   const loadAll = async () => {
     try {
@@ -184,6 +187,23 @@ export default function UserApp() {
 
   const doLogout = () => { logout(); navigate("/"); };
 
+  // Menu rows jump to a tab and, where the tab is long, to the section inside it.
+  const goTo = (nextTab, section) => {
+    setTab(nextTab);
+    setFocusSection(section ? { section, n: Date.now() } : null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // The target may not be mounted yet when the tab switches, so give it a beat.
+  useEffect(() => {
+    if (!focusSection) return undefined;
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-section="${focusSection.section}"]`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 340);
+    return () => clearTimeout(t);
+  }, [focusSection]);
+
   if (user && !user.mobile) {
     return <MobileGate name={user.name} onSaved={loadAll} setMobile={setMobile} onLogout={doLogout} />;
   }
@@ -205,18 +225,24 @@ export default function UserApp() {
               <CountUp value={user?.wallet_balance} fromZero className="font-heading font-extrabold text-emerald-900" />
             </div>
             <NotificationBell refreshToken={notifyToken} />
-            <div className="text-right hidden sm:block">
-              <div className="text-sm font-bold text-zinc-950">{user?.name}</div>
-              <div className="text-xs text-zinc-500 tabular">{user?.mobile}</div>
-            </div>
-            <Button variant="ghost" size="sm" onClick={doLogout} className="text-zinc-600 hover:text-red-600" data-testid="logout-btn">
-              <SignOut size={18} /> <span className="ml-1 hidden sm:inline">Logout</span>
-            </Button>
+            <AvatarTrigger user={user} onClick={() => setMoreOpen(true)} />
           </div>
         </div>
       </nav>
 
       <OnboardingTour open={tour} onClose={() => { markOnboardingSeen(); setTour(false); }} />
+
+      <MoreMenu
+        open={moreOpen}
+        onClose={() => setMoreOpen(false)}
+        user={user}
+        stats={stats}
+        entries={entries}
+        onGo={goTo}
+        onOpenTerms={() => setTermsOpen(true)}
+        onLogout={doLogout}
+        version={update?.current?.version || update?.current?.build || ""}
+      />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
@@ -357,7 +383,7 @@ export default function UserApp() {
 
           <TabsContent value="wallet" className="mt-6">
             <div className="grid md:grid-cols-3 gap-5">
-              <div className="md:col-span-1 bg-gradient-to-br from-emerald-600 to-emerald-800 text-white rounded-lg p-6 border border-emerald-700">
+              <div className="md:col-span-1 bg-gradient-to-br from-emerald-600 to-emerald-800 text-white rounded-lg p-6 border border-emerald-700" data-section="bonus">
                 <div className="text-xs font-bold uppercase tracking-widest opacity-80">Wallet balance</div>
                 <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2" data-testid="wallet-balance">
                   {money(user?.wallet_balance)}
@@ -1400,7 +1426,7 @@ function PlaySafely({ safety, reload, onOpenWallet }) {
       </div>
 
       <div className="grid md:grid-cols-2 gap-5">
-        <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="limits-card">
+        <div className="bg-white border border-zinc-200 rounded-lg p-5" data-section="limits" data-testid="limits-card">
           <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
             <CurrencyInr size={18} weight="fill" className="text-emerald-700" /> Money limits
           </div>
@@ -1470,7 +1496,7 @@ function PlaySafely({ safety, reload, onOpenWallet }) {
         </div>
       </div>
 
-      <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="kyc-card">
+      <div className="bg-white border border-zinc-200 rounded-lg p-5" data-section="kyc" data-testid="kyc-card">
         <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
           <IdentificationCard size={18} weight="fill" className="text-violet-700" /> Identity (PAN)
         </div>
@@ -1521,7 +1547,7 @@ function FaqList() {
     return () => { alive = false; };
   }, []);
   return (
-    <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="faq-card">
+    <div className="bg-white border border-zinc-200 rounded-lg p-5" data-section="faq" data-testid="faq-card">
       <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
         <Info size={18} weight="fill" className="text-emerald-700" /> Common questions
       </div>
@@ -1571,7 +1597,7 @@ function SupportDesk() {
 
   const canSend = subject.trim().length >= 4 && message.trim().length >= 10;
   return (
-    <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="support-card">
+    <div className="bg-white border border-zinc-200 rounded-lg p-5" data-section="support" data-testid="support-card">
       <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
         <ChatCenteredDots size={18} weight="fill" className="text-emerald-700" /> Help desk
       </div>
