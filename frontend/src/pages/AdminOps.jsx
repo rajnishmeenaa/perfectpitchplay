@@ -7,7 +7,7 @@ import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Scroll, FileCsv, DownloadSimple, Broadcast, Coins, Timer, Gauge } from "@phosphor-icons/react";
+import { Scroll, FileCsv, DownloadSimple, Broadcast, Coins, Timer, Gauge, Megaphone, Gift, PaperPlaneRight } from "@phosphor-icons/react";
 
 /**
  * Admin console for the things that keep the shop running: what build the
@@ -20,28 +20,73 @@ export default function AdminOps() {
   const [contestId, setContestId] = useState("");
   const [busy, setBusy] = useState(false);
   const [settle, setSettle] = useState(null);
+  const [growth, setGrowth] = useState(null);
+  const [cast, setCast] = useState({ title: "", body: "", audience: "all" });
   const [users, setUsers] = useState([]);
   const [bonus, setBonus] = useState({ user_id: "", amount: "", note: "" });
 
   const load = async () => {
     try {
-      const [v, a, c, s, u] = await Promise.all([
+      const [v, a, c, s, u, gr] = await Promise.all([
         api.get("/app/version"),
         api.get("/admin/audit?limit=250"),
         api.get("/contests"),
         api.get("/admin/settlement"),
         api.get("/admin/users"),
+        api.get("/admin/growth"),
       ]);
       setRel(v.data);
       setAudit(a.data);
       setContests(c.data);
       setSettle(s.data);
+      setGrowth(gr.data);
       setUsers((u.data || []).filter((x) => x.role !== "admin"));
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not load app & audit data");
     }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
+
+  const saveGrowth = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.put("/admin/growth", {
+        referral_enabled: !!growth.referral_enabled,
+        referee_bonus: Number(growth.referee_bonus || 0),
+        referrer_reward: Number(growth.referrer_reward || 0),
+        referral_min_deposit: Number(growth.referral_min_deposit || 0),
+        season_name: growth.season_name || "",
+        season_start: growth.season_start || null,
+      });
+      setGrowth(data);
+      toast.success(data.referral_enabled ? "Referral rewards are live" : "Referral rewards saved (off)");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not save reward settings");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendBroadcast = async (e) => {
+    e.preventDefault();
+    if (!cast.title.trim() || !cast.body.trim()) {
+      toast.error("Title and message are both needed");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await api.post("/admin/broadcast", {
+        title: cast.title.trim(), body: cast.body.trim(), audience: cast.audience,
+      });
+      const pushNote = data.push?.sent ? ` · ${data.push.sent} device push(es)` : "";
+      toast.success(`Sent to ${data.in_app} member(s)${pushNote}`);
+      setCast({ ...cast, title: "", body: "" });
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Broadcast failed");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const saveSettlement = async () => {
     setBusy(true);
@@ -262,6 +307,88 @@ export default function AdminOps() {
             </Button>
           </div>
         </form>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-broadcast">
+        <h2 className="font-heading text-xl font-extrabold text-zinc-950 flex items-center gap-2">
+          <Megaphone size={18} weight="fill" className="text-gold" /> Broadcast
+        </h2>
+        <p className="text-sm text-zinc-500 mt-1">
+          Sends an in-app notification to every member right now, and to their device too once Firebase is wired up. Use it for contest drops and result announcements.
+        </p>
+        <form onSubmit={sendBroadcast} className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <div className="lg:col-span-2">
+            <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Title</Label>
+            <Input value={cast.title} maxLength={110} onChange={(e) => setCast({ ...cast, title: e.target.value })}
+              placeholder="Mega contest is live" className="mt-1.5" data-testid="cast-title" required />
+          </div>
+          <div>
+            <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Audience</Label>
+            <select value={cast.audience} onChange={(e) => setCast({ ...cast, audience: e.target.value })}
+              className="mt-1.5 block w-full rounded-md border border-zinc-200 px-3 py-2 text-sm font-bold" data-testid="cast-audience">
+              <option value="all">Everyone</option>
+              <option value="players">All members</option>
+              <option value="depositors">Members who deposited</option>
+            </select>
+          </div>
+          <div className="flex items-end">
+            <Button type="submit" disabled={busy} className="rounded-md bg-gold text-night hover:bg-gold-light font-extrabold w-full" data-testid="cast-send-btn">
+              <PaperPlaneRight size={15} weight="bold" className="mr-1.5" /> {busy ? "Sending…" : "Send"}
+            </Button>
+          </div>
+          <div className="lg:col-span-4">
+            <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Message</Label>
+            <Textarea rows={2} maxLength={400} value={cast.body} onChange={(e) => setCast({ ...cast, body: e.target.value })}
+              placeholder="Entries close at the toss — build your XI now." className="mt-1.5" data-testid="cast-body" required />
+          </div>
+        </form>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-growth">
+        <h2 className="font-heading text-xl font-extrabold text-zinc-950 flex items-center gap-2">
+          <Gift size={18} weight="fill" className="text-gold" /> Referral rewards
+        </h2>
+        <p className="text-sm text-zinc-500 mt-1">
+          Paid as non-withdrawable bonus cash when the invited player makes their first deposit above the bar. Leave it off until you have decided the numbers.
+        </p>
+        {growth && (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+            <label className="flex items-center justify-between gap-3 text-sm font-bold text-zinc-700 lg:col-span-2" data-testid="growth-enable-label">
+              Switch referral rewards on
+              <Switch checked={!!growth.referral_enabled} onCheckedChange={(v) => setGrowth({ ...growth, referral_enabled: v })} />
+            </label>
+            <div>
+              <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">New player gets (₹)</Label>
+              <Input type="number" min="0" value={growth.referee_bonus} onChange={(e) => setGrowth({ ...growth, referee_bonus: e.target.value })}
+                className="mt-1.5 tabular" data-testid="growth-referee" />
+            </div>
+            <div>
+              <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Inviter gets (₹)</Label>
+              <Input type="number" min="0" value={growth.referrer_reward} onChange={(e) => setGrowth({ ...growth, referrer_reward: e.target.value })}
+                className="mt-1.5 tabular" data-testid="growth-referrer" />
+            </div>
+            <div>
+              <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Friend must deposit (₹)</Label>
+              <Input type="number" min="0" value={growth.referral_min_deposit} onChange={(e) => setGrowth({ ...growth, referral_min_deposit: e.target.value })}
+                className="mt-1.5 tabular" data-testid="growth-min-deposit" />
+            </div>
+            <div>
+              <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Season name</Label>
+              <Input value={growth.season_name || ""} onChange={(e) => setGrowth({ ...growth, season_name: e.target.value })}
+                className="mt-1.5" data-testid="growth-season" />
+            </div>
+            <div>
+              <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Season starts (optional)</Label>
+              <Input type="date" value={(growth.season_start || "").slice(0, 10)} onChange={(e) => setGrowth({ ...growth, season_start: e.target.value || null })}
+                className="mt-1.5 tabular" data-testid="growth-season-start" />
+            </div>
+            <div className="flex items-end">
+              <Button disabled={busy} onClick={saveGrowth} className="rounded-md bg-emerald-600 hover:bg-emerald-700 font-bold w-full" data-testid="growth-save-btn">
+                Save rewards
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-exports">

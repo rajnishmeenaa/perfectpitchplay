@@ -59,8 +59,8 @@ export function AuthProvider({ children }) {
     return data.mobile;
   };
 
-  const signup = async (name, mobile, password) => {
-    const { data } = await api.post("/auth/signup", { name, mobile, password });
+  const signup = async (name, mobile, password, ref) => {
+    const { data } = await api.post("/auth/signup", { name, mobile, password, ref: ref || undefined });
     setToken(data.token);
     setUser(data.user);
     return data.user;

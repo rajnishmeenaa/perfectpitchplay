@@ -21,26 +21,51 @@ export function markOnboardingSeen() {
   }
 }
 
-/** Smoothly rolls a number to its new value. Used for wallet balances and prize pots. */
+/**
+ * Smoothly rolls a number to its new value. Used for wallet balances and prize pots.
+ *
+ * requestAnimationFrame is paused while a WebView or tab is backgrounded, so the
+ * roll is guarded by a timer that always lands on the target, and a page that is
+ * already hidden shows the final figure immediately instead of sitting at zero.
+ */
 export function CountUp({ value, prefix = "₹", duration = 850, className = "", fromZero = false }) {
   const target = Number(value || 0);
   const [shown, setShown] = useState(fromZero ? 0 : target);
   const fromRef = useRef(fromZero ? 0 : target);
-  const rafRef = useRef(0);
 
   useEffect(() => {
     const from = fromRef.current;
     if (from === target) return undefined;
+
+    const hidden = typeof document !== "undefined" && document.hidden;
+    if (hidden) {
+      fromRef.current = target;
+      setShown(target);
+      return undefined;
+    }
+
     const start = performance.now();
+    let raf = 0;
+    let finished = false;
+    const finish = () => {
+      finished = true;
+      fromRef.current = target;
+      setShown(target);
+    };
     const step = (now) => {
+      if (finished) return;
       const t = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - t, 3);
       setShown(Math.round(from + (target - from) * eased));
-      if (t < 1) rafRef.current = requestAnimationFrame(step);
-      else fromRef.current = target;
+      if (t < 1) raf = requestAnimationFrame(step);
+      else finish();
     };
-    rafRef.current = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafRef.current);
+    raf = requestAnimationFrame(step);
+    const guard = setTimeout(finish, duration + 250);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(guard);
+    };
   }, [target, duration]);
 
   return (

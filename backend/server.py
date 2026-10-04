@@ -182,6 +182,7 @@ class SignupBody(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     mobile: str = Field(min_length=6, max_length=15)
     password: str = Field(min_length=4, max_length=100)
+    ref: Optional[str] = Field(None, max_length=16)  # inviter's referral code
 
 
 class LoginBody(BaseModel):
@@ -644,6 +645,8 @@ async def signup(body: SignupBody, request: Request):
     }
     await db.users.insert_one(doc)
     rate_limit_clear("auth", key)
+    await ensure_referral_code(user_id)
+    await attribute_referral(user_id, body.ref)
     token = create_token(user_id, "user")
     return {"token": token, "user": {"id": user_id, "name": doc["name"], "mobile": mobile, "role": "user",
                                      "wallet_balance": 0.0, "bonus_balance": 0.0}}
@@ -1176,6 +1179,7 @@ async def fulfill_topup_order(razorpay_order_id: str, payment_id: str, source: s
         {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "topup_credited": True}},
     )
     await add_deposit(order["user_id"], amount)
+    await maybe_pay_referral_bonus(order["user_id"])
     await push_notification(
         order["user_id"], "topup", "Wallet topped up",
         f"{inr(amount)} has been added to your wallet.",
@@ -3992,7 +3996,8 @@ async def add_deposit(user_id: str, amount: float) -> None:
     fresh = await db.users.find_one({"id": user_id}, {"_id": 0, "deposit_day": 1, "deposited_today": 1}) or {}
     base = float(fresh.get("deposited_today") or 0) if fresh.get("deposit_day") == _utc_day() else 0.0
     await db.users.update_one({"id": user_id}, {"$set": {"deposit_day": _utc_day(),
-                                                         "deposited_today": round(base + float(amount), 2)}})
+                                                         "deposited_today": round(base + float(amount), 2)},
+                                                "$inc": {"total_deposited": round(float(amount), 2)}})
 
 
 async def spend_today(user_id: str) -> float:
@@ -4419,6 +4424,338 @@ async def admin_ticket_reply(ticket_id: str, body: TicketReplyBody, admin=Depend
                                    "status": body.status}}
 
 
+# ---------- Growth: referrals, streaks, badges, season ladder, broadcast ----------
+#
+# Referral rewards are OFF by default and pay out as non-withdrawable bonus cash,
+# so switching them on cannot create a withdrawable liability by accident.
+
+GROWTH_DEFAULTS = {
+    "referral_enabled": False,
+    "referee_bonus": 0.0,        # bonus cash the new player gets
+    "referrer_reward": 0.0,      # bonus cash the inviter gets per converted friend
+    "referral_min_deposit": 100.0,  # the friend must deposit this much first
+    "season_name": "Season 1",
+    "season_start": None,        # ISO date; null = all-time
+}
+
+
+async def get_growth_settings() -> dict:
+    s = await db.settings.find_one({"key": "growth"}, {"_id": 0}) or {}
+    out = dict(GROWTH_DEFAULTS)
+    for k in out:
+        if s.get(k) is not None:
+            out[k] = s[k]
+    for k in ("referee_bonus", "referrer_reward", "referral_min_deposit"):
+        try:
+            out[k] = round(float(out[k] or 0), 2)
+        except (TypeError, ValueError):
+            out[k] = 0.0
+    out["referral_enabled"] = bool(out["referral_enabled"])
+    return out
+
+
+class GrowthBody(BaseModel):
+    referral_enabled: Optional[bool] = None
+    referee_bonus: Optional[float] = Field(None, ge=0, le=100000)
+    referrer_reward: Optional[float] = Field(None, ge=0, le=100000)
+    referral_min_deposit: Optional[float] = Field(None, ge=0, le=10000000)
+    season_name: Optional[str] = Field(None, max_length=40)
+    season_start: Optional[str] = None
+
+
+@api_router.get("/admin/growth")
+async def admin_get_growth(admin=Depends(require_admin)):
+    return await get_growth_settings()
+
+
+@api_router.put("/admin/growth")
+async def admin_put_growth(body: GrowthBody, admin=Depends(require_admin)):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "season_name" in updates:
+        updates["season_name"] = updates["season_name"].strip() or GROWTH_DEFAULTS["season_name"]
+    updates["key"] = "growth"
+    updates["updated_at"] = now_iso()
+    await db.settings.update_one({"key": "growth"}, {"$set": updates}, upsert=True)
+    return await get_growth_settings()
+
+
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no I/O/0/1 so codes survive being read aloud
+
+
+def _make_code() -> str:
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(6))
+
+
+async def ensure_referral_code(user_id: str) -> str:
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "referral_code": 1}) or {}
+    if u.get("referral_code"):
+        return u["referral_code"]
+    for _ in range(12):
+        code = _make_code()
+        try:
+            await db.users.update_one({"id": user_id, "referral_code": None}, {"$set": {"referral_code": code}}, upsert=False)
+        except Exception:
+            continue
+        fresh = await db.users.find_one({"id": user_id}, {"_id": 0, "referral_code": 1}) or {}
+        if fresh.get("referral_code") == code:
+            return code
+        if fresh.get("referral_code"):
+            return fresh["referral_code"]
+    return ""
+
+
+async def attribute_referral(user_id: str, ref: Optional[str]) -> None:
+    """Record who invited a brand-new account. Bad or self codes are ignored."""
+    code = (ref or "").strip().upper()
+    if len(code) != 6:
+        return
+    inviter = await db.users.find_one({"referral_code": code}, {"_id": 0, "id": 1, "name": 1})
+    if not inviter or inviter["id"] == user_id:
+        return
+    await db.users.update_one({"id": user_id}, {"$set": {"referred_by": inviter["id"], "referred_at": now_iso()}})
+
+
+async def maybe_pay_referral_bonus(user_id: str) -> Optional[dict]:
+    """Pay both sides once the invitee's lifetime deposits clear the bar."""
+    g = await get_growth_settings()
+    if not g["referral_enabled"]:
+        return None
+    me = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not me or not me.get("referred_by") or me.get("referral_rewarded"):
+        return None
+    if float(me.get("total_deposited") or 0) + 0.001 < g["referral_min_deposit"]:
+        return None
+    await db.users.update_one({"id": user_id}, {"$set": {"referral_rewarded": True, "referral_rewarded_at": now_iso()}})
+    paid = {"referee": 0.0, "referrer": 0.0}
+    if g["referee_bonus"] > 0:
+        await credit_bonus(user_id, g["referee_bonus"], "Welcome bonus from your invite", "referral")
+        paid["referee"] = g["referee_bonus"]
+        await push_notification(user_id, "wallet", f"{inr(g['referee_bonus'])} welcome bonus 🎉",
+                                "Your first deposit unlocked a bonus you can spend on entry fees.")
+    inviter = await db.users.find_one({"id": me["referred_by"]}, {"_id": 0, "id": 1, "name": 1})
+    if inviter and g["referrer_reward"] > 0:
+        await credit_bonus(inviter["id"], g["referrer_reward"], f"Friend bonus · {me.get('name')}", "referral")
+        paid["referrer"] = g["referrer_reward"]
+        await push_notification(inviter["id"], "wallet", f"{inr(g['referrer_reward'])} for inviting {me.get('name')} 🎁",
+                                "Bonus cash is in your account and ready to use on entry fees.")
+    return {"paid": paid, "inviter": inviter["id"] if inviter else None}
+
+
+@api_router.get("/me/referral")
+async def my_referral(user=Depends(get_current_user)):
+    g = await get_growth_settings()
+    code = await ensure_referral_code(user["id"])
+    invited = await db.users.find({"referred_by": user["id"]}, {"_id": 0, "name": 1, "referred_at": 1,
+                                                               "referral_rewarded": 1}).to_list(500)
+    rewarded = [i for i in invited if i.get("referral_rewarded")]
+    origin = (user.get("referred_by") and (await db.users.find_one({"id": user["referred_by"]}, {"_id": 0, "name": 1}))) or None
+    return {
+        "enabled": g["referral_enabled"],
+        "code": code,
+        "share_text": (f"Join my PitchPlay contest — pick an XI, win real money. "
+                       f"Use my invite code {code} when you sign up."),
+        "referee_bonus": g["referee_bonus"],
+        "referrer_reward": g["referrer_reward"],
+        "min_deposit": g["referral_min_deposit"],
+        "invited": [{"name": (i.get("name") or "Player").split(" ")[0], "at": i.get("referred_at"),
+                     "rewarded": bool(i.get("referral_rewarded"))} for i in invited],
+        "invited_count": len(invited),
+        "rewarded_count": len(rewarded),
+        "earned": round(sum(g["referrer_reward"] for _ in rewarded), 2),
+        "invited_by": origin.get("name") if origin else None,
+    }
+
+
+BADGES = [
+    {"key": "first_team", "label": "Team Registered", "hint": "Built your first XI", "icon": "Flag"},
+    {"key": "first_entry", "label": "On The Pitch", "hint": "Joined your first contest", "icon": "Ticket"},
+    {"key": "first_win", "label": "Champion", "hint": "Won a settled contest", "icon": "Trophy"},
+    {"key": "three_top", "label": "Podium Regular", "hint": "Three top-3 finishes", "icon": "ChartBar"},
+    {"key": "century", "label": "Ton Club", "hint": "Scored 100+ points in a match", "icon": "Lightning"},
+    {"key": "week_streak", "label": "Seven Days Straight", "hint": "Played in three consecutive weeks", "icon": "Timer"},
+    {"key": "season_50", "label": "Season Grinder", "hint": "Fifty contests played", "icon": "ShieldCheck"},
+]
+
+
+def _week_of(iso: str) -> tuple:
+    try:
+        d = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return (0, 0)
+    return d.isocalendar()[:2]
+
+
+async def compute_badges(user_id: str) -> dict:
+    entries = await db.entries.find({"user_id": user_id}, {"_id": 0}).to_list(5000)
+    teams = await db.fantasy_teams.count_documents({"user_id": user_id})
+    played = [e for e in entries if e.get("status") in ("approved", "won")]
+    won = [e for e in entries if e.get("status") == "won"]
+    ranks = [int(e["fantasy_rank"]) for e in entries if e.get("fantasy_rank")]
+    points = [float(e.get("fantasy_points") or 0) for e in entries if e.get("fantasy_points")]
+    weeks = sorted({_week_of(e.get("created_at")) for e in played if e.get("created_at")} - {(0, 0)})
+    streak = 1
+    best_streak = 1 if weeks else 0
+    for i in range(1, len(weeks)):
+        prev_y, prev_w = weeks[i - 1]
+        cur_y, cur_w = weeks[i]
+        # consecutive ISO week, accounting for the year rollover
+        expected = (prev_y, prev_w + 1) if prev_w < 52 else (prev_y + 1, 1)
+        if weeks[i] == expected:
+            streak += 1
+        else:
+            streak = 1
+        best_streak = max(best_streak, streak)
+    earned = {
+        "first_team": teams > 0,
+        "first_entry": len(played) > 0,
+        "first_win": len(won) > 0,
+        "three_top": len([r for r in ranks if r <= 3]) >= 3,
+        "century": any(p >= 100 for p in points),
+        "week_streak": best_streak >= 3,
+        "season_50": len(played) >= 50,
+    }
+    return {
+        "badges": [{**b, "earned": bool(earned.get(b["key"]))} for b in BADGES],
+        "earned_count": sum(1 for b in BADGES if earned.get(b["key"])),
+        "week_streak": best_streak,
+        "weeks_played": len(weeks),
+    }
+
+
+@api_router.get("/me/badges")
+async def my_badges(user=Depends(get_current_user)):
+    return await compute_badges(user["id"])
+
+
+@api_router.get("/leaderboard/season")
+async def season_leaderboard(limit: int = Query(50, ge=5, le=200), user=Depends(get_current_user)):
+    """Rank players by points scored across settled contests this season."""
+    g = await get_growth_settings()
+    since = g.get("season_start")
+    q = {"fantasy_points": {"$gt": -1_000_000}}
+    if since:
+        q["created_at"] = {"$gte": since}
+    agg: dict = {}
+    rows_in = await db.entries.find(q, {"_id": 0, "user_id": 1, "user_name": 1, "fantasy_points": 1,
+                                        "fantasy_rank": 1, "status": 1, "winner_prize": 1,
+                                        "entry_fee": 1}).to_list(50000)
+    for e in rows_in:
+        uid = e.get("user_id")
+        if not uid:
+            continue
+        row = agg.setdefault(uid, {"user_id": uid, "name": e.get("user_name") or "Player", "points": 0.0,
+                                   "contests": 0, "wins": 0, "top3": 0, "winnings": 0.0, "wagered": 0.0})
+        pts = float(e.get("fantasy_points") or 0)
+        row["points"] += pts
+        if e.get("status") in ("approved", "won"):
+            row["contests"] += 1
+            row["wagered"] += float(e.get("entry_fee") or 0)
+        if e.get("status") == "won":
+            row["wins"] += 1
+            row["winnings"] += float(e.get("winner_prize") or 0)
+        if e.get("fantasy_rank") and int(e["fantasy_rank"]) <= 3:
+            row["top3"] += 1
+    rows = sorted(agg.values(), key=lambda r: (-r["points"], -r["wins"]))[:limit]
+    for i, r in enumerate(rows, start=1):
+        r["rank"] = i
+        r["points"] = round(r["points"], 1)
+        r["winnings"] = round(r["winnings"], 2)
+        r["wagered"] = round(r["wagered"], 2)
+        r["is_me"] = r["user_id"] == user["id"]
+    me_row = next((r for r in rows if r["is_me"]), None)
+    if not me_row and user["id"] in agg:
+        full = sorted(agg.values(), key=lambda r: (-r["points"], -r["wins"]))
+        pos = next((i for i, r in enumerate(full, start=1) if r["user_id"] == user["id"]), None)
+        if pos:
+            mine = agg[user["id"]]
+            me_row = {**mine, "rank": pos, "points": round(mine["points"], 1), "is_me": True,
+                      "winnings": round(mine["winnings"], 2), "wagered": round(mine["wagered"], 2)}
+    return {"season": g["season_name"], "season_start": since, "rows": rows, "me": me_row,
+            "total_players": len(agg)}
+
+
+# --- Device push tokens + admin broadcast ---
+class PushTokenBody(BaseModel):
+    token: str = Field(..., min_length=8, max_length=400)
+    platform: Optional[str] = "android"
+
+
+@api_router.post("/me/push-token")
+async def register_push_token(body: PushTokenBody, user=Depends(get_current_user)):
+    await db.push_tokens.update_one(
+        {"token": body.token},
+        {"$set": {"token": body.token, "user_id": user["id"], "platform": (body.platform or "android")[:20],
+                  "updated_at": now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True}
+
+
+@api_router.delete("/me/push-token")
+async def unregister_push_token(token: str = Query(...), user=Depends(get_current_user)):
+    await db.push_tokens.delete_many({"token": token, "user_id": user["id"]})
+    return {"ok": True}
+
+
+async def send_server_push(title: str, body: str, data: Optional[dict] = None) -> dict:
+    """Best-effort FCM send. Without a Firebase project configured the in-app
+    notification is still the delivery channel, so this only reports what it did."""
+    project = os.environ.get("FCM_PROJECT_ID", "").strip()
+    creds_path = os.environ.get("FCM_SERVICE_ACCOUNT_FILE", "").strip()
+    tokens = [t["token"] async for t in db.push_tokens.find({}, {"_id": 0, "token": 1}).limit(5000)]
+    if not project or not creds_path or not Path(creds_path).exists():
+        return {"sent": 0, "skipped": len(tokens), "reason": "firebase_not_configured"}
+    try:
+        from firebase_admin import credentials, initialize_app, messaging  # noqa: WPS433
+    except ImportError:
+        return {"sent": 0, "skipped": len(tokens), "reason": "firebase_admin_not_installed"}
+    try:
+        initialize_app(credentials.Certificate(creds_path))
+    except ValueError:
+        pass  # already initialised by an earlier broadcast
+    except Exception:
+        logger.exception("Firebase init failed")
+        return {"sent": 0, "skipped": len(tokens), "reason": "firebase_init_failed"}
+    msgs = [messaging.Message(
+        token=t, notification=messaging.Notification(title=title[:110], body=body[:240]),
+        data={k: str(v) for k, v in (data or {}).items()},
+    ) for t in tokens]
+    ok = 0
+    for chunk_start in range(0, len(msgs), 500):
+        try:
+            res = messaging.send_each(msgs[chunk_start:chunk_start + 500])
+            ok += sum(1 for r in res.responses if r.success)
+        except Exception:
+            logger.exception("FCM batch failed")
+    return {"sent": ok, "skipped": len(tokens) - ok, "reason": "firebase"}
+
+
+class BroadcastBody(BaseModel):
+    title: str = Field(..., min_length=3, max_length=110)
+    body: str = Field(..., min_length=1, max_length=400)
+    link: Optional[str] = None
+    audience: Optional[str] = "all"  # all | players | depositors
+
+
+@api_router.post("/admin/broadcast")
+async def admin_broadcast(body: BroadcastBody, admin=Depends(require_admin)):
+    q = {}
+    if body.audience == "players":
+        q = {"role": "user"}
+    elif body.audience == "depositors":
+        q = {"role": "user", "total_deposited": {"$gt": 0}}
+    else:
+        q = {"role": "user"}
+    sent = 0
+    recipients = await db.users.find(q, {"_id": 0, "id": 1}).to_list(20000)
+    for u in recipients:
+        await push_notification(u["id"], "news", body.title.strip(), body.body.strip(),
+                                {"link": body.link} if body.link else None)
+        sent += 1
+    push = await send_server_push(body.title.strip(), body.body.strip(), {"link": body.link or ""})
+    return {"ok": True, "in_app": sent, "push": push}
+
+
 # ---------- Ops: rate limiting, settlement tax, bonus wallet, automations, OTP ----------
 #
 # Everything here is deliberately conservative for a real-money app: limits default to
@@ -4428,6 +4765,9 @@ async def admin_ticket_reply(ticket_id: str, body: TicketReplyBody, admin=Depend
 RATE_RULES = {
     "auth": (10, 300),        # failed login / signup attempts per identity
     "otp_request": (5, 600),  # codes per mobile
+    "otp_request_ip": (60, 600),  # codes per IP — Indian carrier NAT puts many
+                                  # genuine users behind one gateway address, so
+                                  # this stays far looser than the per-mobile cap
     "otp_verify": (10, 600),  # guesses per mobile
     "join": (30, 600),        # contest joins per user
     "withdraw": (10, 600),    # withdrawal requests per user
@@ -4461,7 +4801,7 @@ def rate_limit_check(scope: str, key: str) -> None:
         retry = int(window - (now - hits[0])) + 1
         raise HTTPException(
             status_code=429,
-            detail="Too many attempts from here. Please wait a moment and try again.",
+            detail="Too many attempts. Please wait a moment and try again.",
             headers={"Retry-After": str(retry)},
         )
 
@@ -4646,7 +4986,7 @@ async def otp_request(body: OtpRequestBody, request: Request):
     if len(mobile) != 10:
         raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number")
     rate_limit("otp_request", mobile)
-    rate_limit("otp_request", client_ip(request))
+    rate_limit("otp_request_ip", client_ip(request))
     code = await _issue_otp(mobile)
     channel = await deliver_otp(mobile, code)
     out = {"ok": True, "mobile": mobile, "channel": channel, "expires_in": OTP_TTL_SECONDS,
@@ -4694,6 +5034,7 @@ class OtpSignupBody(BaseModel):
     mobile: str
     name: str
     password: str = Field(..., min_length=4, max_length=72)
+    ref: Optional[str] = Field(None, max_length=16)  # inviter's referral code
 
 
 @api_router.post("/auth/otp/signup")
@@ -4721,6 +5062,8 @@ async def otp_signup(body: OtpSignupBody, request: Request):
         "wallet_balance": 0.0, "bonus_balance": 0.0, "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
+    await ensure_referral_code(user_id)
+    await attribute_referral(user_id, body.ref)
     doc.pop("_id", None)
     return {"token": create_token(user_id, "user"), "user": sanitize_user(doc, hide_mobile=False)}
 

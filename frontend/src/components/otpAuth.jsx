@@ -13,12 +13,13 @@ const RESEND_SECONDS = 30;
  * (mock in development, MSG91 once keys are set), so this form never has to
  * know which SMS provider is live.
  */
-export default function OtpAuth({ onSignedIn }) {
+export default function OtpAuth({ onSignedIn, invite = "" }) {
   const [step, setStep] = useState("phone"); // phone -> code -> profile
   const [mobile, setMobile] = useState("");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [ref, setRef] = useState(invite || "");
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const timer = useRef(null);
@@ -98,7 +99,9 @@ export default function OtpAuth({ onSignedIn }) {
     }
     setBusy(true);
     try {
-      const { data } = await api.post("/auth/otp/signup", { mobile: mobile.trim(), name: name.trim(), password });
+      const { data } = await api.post("/auth/otp/signup", {
+        mobile: mobile.trim(), name: name.trim(), password, ref: ref.trim().toUpperCase() || undefined,
+      });
       const u = await onSignedIn(data.token);
       toast.success(`Welcome ${u.name}`);
     } catch (err) {
@@ -206,6 +209,17 @@ export default function OtpAuth({ onSignedIn }) {
           className={field}
           data-testid="otp-password"
           required
+        />
+      </div>
+      <div>
+        <Label htmlFor="otp-ref" className="text-xs font-bold uppercase tracking-widest text-zinc-500">Invite code (optional)</Label>
+        <Input
+          id="otp-ref"
+          value={ref}
+          onChange={(e) => setRef(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+          placeholder="6 characters from a friend"
+          className={`tracking-[0.3em] uppercase ${field}`}
+          data-testid="otp-ref"
         />
       </div>
       <Button

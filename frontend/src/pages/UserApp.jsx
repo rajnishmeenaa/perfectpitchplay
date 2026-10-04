@@ -17,6 +17,7 @@ import { alertNewInboxItems } from "../lib/notifications";
 import { checkForUpdate } from "../lib/appUpdate";
 import FantasyApp from "./FantasyApp";
 import { OnboardingTour, CountUp, hasSeenOnboarding, markOnboardingSeen } from "../components/onboarding";
+import { ReferralCard, BadgeShelf, SeasonLadder } from "../components/growth";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -345,6 +346,13 @@ export default function UserApp() {
 
           <TabsContent value="stats" className="mt-6">
             <SeasonStats stats={stats} />
+            <div className="grid lg:grid-cols-2 gap-5 mt-5">
+              <div className="space-y-5">
+                <ReferralCard />
+                <BadgeShelf />
+              </div>
+              <SeasonLadder />
+            </div>
           </TabsContent>
 
           <TabsContent value="wallet" className="mt-6">

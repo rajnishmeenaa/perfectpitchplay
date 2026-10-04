@@ -22,7 +22,10 @@ export default function Landing() {
   const navigate = useNavigate();
   const [mode, setMode] = useState("login");
   const [method, setMethod] = useState("password");
-  const [form, setForm] = useState({ name: "", mobile: "", password: "" });
+  const [form, setForm] = useState(() => ({
+    name: "", mobile: "", password: "",
+    invite: (new URLSearchParams(window.location.search).get("ref") || "").toUpperCase().slice(0, 6),
+  }));
   const [busy, setBusy] = useState(false);
 
   // Already signed in? Go straight to the right lobby (in an effect, so React
@@ -43,7 +46,7 @@ export default function Landing() {
     try {
       const u = mode === "login"
         ? await login(form.mobile.trim(), form.password)
-        : await signup(form.name.trim(), form.mobile.trim(), form.password);
+        : await signup(form.name.trim(), form.mobile.trim(), form.password, form.invite.trim().toUpperCase());
       toast.success(`Welcome ${u.name}`);
       navigate(u.role === "admin" ? "/admin" : "/app", { replace: true });
     } catch (err) {
@@ -176,7 +179,7 @@ export default function Landing() {
             </div>
 
             {method === "otp" ? (
-              <OtpAuth onSignedIn={signInWithToken} />
+              <OtpAuth onSignedIn={signInWithToken} invite={form.invite} />
             ) : (
             <form className="mt-6 space-y-4" onSubmit={submit}>
               {mode === "signup" && (
@@ -190,6 +193,19 @@ export default function Landing() {
                     className="mt-2 border-zinc-200 focus-visible:ring-gold"
                     data-testid="input-name"
                     required
+                  />
+                </div>
+              )}
+              {mode === "signup" && (
+                <div>
+                  <Label htmlFor="invite" className="text-xs font-bold uppercase tracking-widest text-zinc-500">Invite code (optional)</Label>
+                  <Input
+                    id="invite"
+                    value={form.invite}
+                    onChange={(e) => setForm({ ...form, invite: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) })}
+                    placeholder="6 characters from a friend"
+                    className="mt-2 border-zinc-200 focus-visible:ring-gold tracking-[0.3em] uppercase"
+                    data-testid="input-invite"
                   />
                 </div>
               )}
