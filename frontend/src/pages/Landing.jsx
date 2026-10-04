@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
-import { Baseball as CricketBall, ArrowRight, ShieldCheck, Lightning, Trophy, GoogleLogo } from "@phosphor-icons/react";
+import { ArrowRight, ShieldCheck, Lightning, Trophy, GoogleLogo, NumberCircleOne, NumberCircleTwo, NumberCircleThree, Sparkle } from "@phosphor-icons/react";
 
-const HERO = "https://images.pexels.com/photos/36741131/pexels-photo-36741131.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
+const HERO = process.env.PUBLIC_URL + "/brand/hero-stadium.jpg";
+const LOGO = process.env.PUBLIC_URL + "/brand/logo-gold.png";
+
+const STEPS = [
+  { icon: NumberCircleOne, title: "Pick your contest", body: "Join a mega league, a head-to-head, or a private contest from a friend's code." },
+  { icon: NumberCircleTwo, title: "Build your XI", body: "11 players, 100 credits, captain earns 2x. Live player insights help you decide." },
+  { icon: NumberCircleThree, title: "Win real money", body: "Watch the ball-by-ball centre, track your rank live, withdraw to UPI after settlement." },
+];
 
 export default function Landing() {
   const { user, login, signup } = useAuth();
@@ -47,25 +54,25 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-100" data-testid="landing-page">
+    <div className="min-h-screen stadium-bg" data-testid="landing-page">
       {/* Nav */}
       <nav className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-zinc-200">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950" data-testid="brand-logo">
-            <CricketBall weight="fill" className="text-emerald-600" size={28} />
-            <span>PitchPlay</span>
+          <div className="flex items-center gap-2.5 font-heading font-extrabold text-lg text-zinc-950" data-testid="brand-logo">
+            <img src={LOGO} alt="PitchPlay" className="h-9 w-9 rounded-xl object-cover ring-1 ring-zinc-200" />
+            <span className="tracking-tight">Pitch<span className="text-gold-grad">Play</span></span>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMode("login")}
-              className="text-sm font-semibold text-zinc-700 hover:text-emerald-600 transition-colors"
+              className="text-sm font-semibold text-zinc-700 hover:text-gold transition-colors"
               data-testid="nav-login-btn"
             >
               Login
             </button>
             <Button
               onClick={() => setMode("signup")}
-              className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95 transition-transform"
+              className="rounded-full bg-gold hover:bg-gold-light text-night font-bold active:scale-95 transition-transform shadow-glow-gold"
               data-testid="nav-signup-btn"
             >
               Sign up
@@ -77,52 +84,67 @@ export default function Landing() {
       {/* Hero + Auth */}
       <section className="max-w-7xl mx-auto px-6 pt-10 pb-16 grid lg:grid-cols-5 gap-10 items-start">
         <div className="lg:col-span-3">
-          <div className="relative rounded-2xl overflow-hidden border border-zinc-200">
-            <img src={HERO} alt="Stadium" className="w-full h-[420px] object-cover" />
-            <div className="absolute inset-0 bg-zinc-950/55" />
+          <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-card">
+            <img src={HERO} alt="Stadium under lights" className="w-full h-[420px] object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-night via-night/40 to-transparent" />
             <div className="grain absolute inset-0 opacity-20 mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 p-10 flex flex-col justify-end">
-              <span className="inline-flex items-center gap-2 self-start bg-orange-600 text-white text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full">
-                <Lightning weight="fill" size={12} /> Private Contests
+              <span className="inline-flex items-center gap-2 self-start bg-gold text-night text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-glow-gold">
+                <Sparkle weight="fill" size={12} /> Live Match Centre
               </span>
               <h1 className="mt-4 font-heading text-white text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tighter leading-[1.05]">
                 Private cricket contests.<br />
-                <span className="text-emerald-300">Play the pitch, win the pot.</span>
+                <span className="text-gold-grad">Play the pitch, win the pot.</span>
               </h1>
               <p className="mt-4 text-zinc-200 text-base max-w-lg leading-relaxed">
-                Admin drops a contest link, you pay the entry, we open the gate. Winners get paid straight to their UPI.
+                Ball-by-ball scores, live rank movement, and winnings paid straight to your UPI.
               </p>
             </div>
           </div>
 
           <div className="grid sm:grid-cols-3 gap-4 mt-6">
             {[
-              { icon: ShieldCheck, title: "Admin-verified", body: "Every payment reviewed before entry approval." },
-              { icon: Lightning, title: "Any game link", body: "Cricket fantasy, quiz, external apps — admin's choice." },
-              { icon: Trophy, title: "Direct payouts", body: "Winners withdraw to UPI, admin approves & pays." },
+              { icon: ShieldCheck, title: "Play-safe controls", body: "Deposit limits, reality checks and self-exclusion built in." },
+              { icon: Lightning, title: "Live everything", body: "Ball-by-ball feed, innings card and your rank after every over." },
+              { icon: Trophy, title: "Direct payouts", body: "Winners withdraw to UPI once the contest settles." },
             ].map(({ icon: Icon, title, body }) => (
-              <div key={title} className="bg-white border border-zinc-200 rounded-lg p-5 hover:border-zinc-300 hover:-translate-y-0.5 transition-transform">
-                <Icon size={22} weight="duotone" className="text-emerald-600" />
+              <div key={title} className="bg-white border border-zinc-200 rounded-lg p-5 hover:border-zinc-300 hover:-translate-y-0.5 transition-transform shadow-card">
+                <Icon size={22} weight="duotone" className="text-gold" />
                 <div className="font-heading font-bold text-zinc-950 mt-3">{title}</div>
                 <div className="text-sm text-zinc-500 mt-1 leading-relaxed">{body}</div>
               </div>
             ))}
           </div>
+
+          {/* How it works */}
+          <div className="mt-10" data-testid="how-it-works">
+            <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">How it works</div>
+            <div className="grid sm:grid-cols-3 gap-4 mt-3">
+              {STEPS.map(({ icon: Icon, title, body }, i) => (
+                <div key={title} className="relative glass rounded-xl p-5 overflow-hidden">
+                  <div className="absolute -right-4 -top-6 font-heading text-[92px] font-extrabold text-white/5 select-none tabular">{i + 1}</div>
+                  <Icon size={26} weight="duotone" className="text-pitch" />
+                  <div className="font-heading font-bold text-zinc-900 mt-3">{title}</div>
+                  <div className="text-sm text-zinc-500 mt-1 leading-relaxed">{body}</div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="lg:col-span-2">
-          <div className="bg-white border border-zinc-200 rounded-2xl p-8" data-testid="auth-card">
+          <div className="bg-white border border-zinc-200 rounded-2xl p-8 shadow-card" data-testid="auth-card">
             <div className="flex items-center gap-6 border-b border-zinc-100 pb-4">
               <button
                 onClick={() => setMode("login")}
-                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "login" ? "text-emerald-600 border-b-2 border-emerald-600 -mb-[17px]" : "text-zinc-400"}`}
+                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "login" ? "text-gold border-b-2 border-gold -mb-[17px]" : "text-zinc-400"}`}
                 data-testid="tab-login"
               >
                 Login
               </button>
               <button
                 onClick={() => setMode("signup")}
-                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "signup" ? "text-emerald-600 border-b-2 border-emerald-600 -mb-[17px]" : "text-zinc-400"}`}
+                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "signup" ? "text-gold border-b-2 border-gold -mb-[17px]" : "text-zinc-400"}`}
                 data-testid="tab-signup"
               >
                 Sign up
@@ -138,7 +160,7 @@ export default function Landing() {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="Virat K."
-                    className="mt-2 border-zinc-200 focus-visible:ring-emerald-500"
+                    className="mt-2 border-zinc-200 focus-visible:ring-gold"
                     data-testid="input-name"
                     required
                   />
@@ -153,7 +175,7 @@ export default function Landing() {
                   value={form.mobile}
                   onChange={(e) => setForm({ ...form, mobile: e.target.value })}
                   placeholder="9876543210"
-                  className="mt-2 border-zinc-200 focus-visible:ring-emerald-500 tabular"
+                  className="mt-2 border-zinc-200 focus-visible:ring-gold tabular"
                   data-testid="input-mobile"
                   required
                 />
@@ -166,7 +188,7 @@ export default function Landing() {
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   placeholder="Minimum 4 characters"
-                  className="mt-2 border-zinc-200 focus-visible:ring-emerald-500"
+                  className="mt-2 border-zinc-200 focus-visible:ring-gold"
                   data-testid="input-password"
                   required
                 />
@@ -174,7 +196,7 @@ export default function Landing() {
               <Button
                 type="submit"
                 disabled={busy}
-                className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 font-bold text-base rounded-md active:scale-[0.98] transition-transform"
+                className="w-full h-11 bg-gold hover:bg-gold-light text-night font-bold text-base rounded-md active:scale-[0.98] transition-transform shadow-glow-gold"
                 data-testid="auth-submit-btn"
               >
                 {busy ? "Please wait..." : mode === "login" ? "Enter contest lobby" : "Create my account"}
@@ -197,7 +219,7 @@ export default function Landing() {
               className="mt-5 w-full h-11 flex items-center justify-center gap-3 rounded-md border border-zinc-300 bg-white text-zinc-800 font-bold hover:bg-zinc-50 active:scale-[0.98] transition-transform"
               data-testid="google-signin-btn"
             >
-              <GoogleLogo size={20} weight="bold" className="text-emerald-600" />
+              <GoogleLogo size={20} weight="bold" className="text-gold" />
               Continue with Google
             </button>
             <p className="mt-3 text-xs text-zinc-400 text-center">
@@ -207,10 +229,10 @@ export default function Landing() {
         </div>
       </section>
 
-      <footer className="border-t border-zinc-200 bg-white">
+      <footer className="border-t border-zinc-200 bg-white/90">
         <div className="max-w-7xl mx-auto px-6 py-6 flex justify-between text-sm text-zinc-500">
-          <span>© PitchPlay — Private contest lounge</span>
-          <span className="font-mono">v1.0</span>
+          <span>© PitchPlay — Play responsibly. 18+ only.</span>
+          <span className="font-mono">v1.4.0</span>
         </div>
       </footer>
     </div>

@@ -2,15 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Manrope:wght@400;500;600;700;800&display=swap');
 
 body {
     margin: 0;
     font-family: 'Manrope', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #F4F5F5;
-    color: #18181B;
+    background-color: #071109;
+    color: #F0F7F2;
 }
 
 .font-heading { font-family: 'Outfit', ui-sans-serif, system-ui, sans-serif; }
@@ -24,26 +24,31 @@ code {
 
 @layer base {
     :root {
-        --background: 0 0% 96%;
-        --foreground: 240 6% 10%;
-        --card: 0 0% 100%;
-        --card-foreground: 240 6% 10%;
-        --popover: 0 0% 100%;
-        --popover-foreground: 240 6% 10%;
-        --primary: 160 84% 32%;
+        --background: 152 47% 4%;
+        --foreground: 140 25% 92%;
+        --card: 153 40% 8%;
+        --card-foreground: 140 25% 92%;
+        --popover: 152 42% 7%;
+        --popover-foreground: 140 25% 92%;
+        --primary: 158 64% 40%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 240 5% 96%;
-        --secondary-foreground: 240 6% 10%;
-        --muted: 240 5% 96%;
-        --muted-foreground: 240 4% 46%;
-        --accent: 240 5% 96%;
-        --accent-foreground: 240 6% 10%;
-        --destructive: 0 84% 60%;
+        --secondary: 152 28% 13%;
+        --secondary-foreground: 140 25% 92%;
+        --muted: 152 25% 12%;
+        --muted-foreground: 146 12% 62%;
+        --accent: 43 88% 57%;
+        --accent-foreground: 152 47% 8%;
+        --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
-        --border: 240 6% 90%;
-        --input: 240 6% 90%;
-        --ring: 160 84% 32%;
+        --border: 152 22% 17%;
+        --input: 152 20% 21%;
+        --ring: 43 88% 57%;
         --radius: 0.5rem;
+        --chart-1: 158 64% 45%;
+        --chart-2: 43 88% 57%;
+        --chart-3: 152 45% 30%;
+        --chart-4: 38 92% 50%;
+        --chart-5: 166 70% 38%;
     }
 }
 
@@ -56,19 +61,215 @@ code {
     }
 }
 
+/* Light surfaces from the old theme become dark stadium cards (unlayered beats layered utilities). */
+.bg-white { background-color: hsl(153 40% 8%); }
+.bg-white\/90 { background-color: hsl(153 40% 8% / 0.9); }
+.bg-white\/95 { background-color: hsl(153 40% 8% / 0.95); }
+.bg-white\/80 { background-color: hsl(153 40% 8% / 0.8); }
+.bg-white\/70 { background-color: hsl(153 40% 8% / 0.7); }
+.bg-white\/60 { background-color: hsl(153 40% 8% / 0.6); }
+.bg-white\/50 { background-color: hsl(153 40% 8% / 0.5); }
+.bg-white\/40 { background-color: hsl(153 40% 8% / 0.4); }
+.bg-white\/30 { background-color: hsl(153 40% 8% / 0.3); }
+.bg-white\/20 { background-color: hsl(153 40% 8% / 0.2); }
+.bg-white\/10 { background-color: hsl(153 40% 8% / 0.1); }
+.bg-white\/5 { background-color: hsl(153 40% 8% / 0.05); }
+.hover\:bg-white:hover { background-color: hsl(153 40% 8%); }
+
+/* Old light greys used as page backgrounds become the night canvas. */
+.bg-zinc-50 { background-color: #0A1810; }
+.bg-zinc-100 { background-color: #071109; }
+.hover\:bg-zinc-50:hover { background-color: #0D1D14; }
+.hover\:bg-zinc-100:hover { background-color: #0C1B13; }
+
+/* White text stays white (brand `white` maps to card color for surfaces). */
+.text-white { color: #F4FAF6; }
+.text-white\/90 { color: rgb(244 250 246 / 0.9); }
+.text-white\/80 { color: rgb(244 250 246 / 0.8); }
+.text-white\/70 { color: rgb(244 250 246 / 0.7); }
+.text-white\/60 { color: rgb(244 250 246 / 0.6); }
+.text-white\/50 { color: rgb(244 250 246 / 0.5); }
+.fill-white { fill: #F4FAF6; }
+.stroke-white { stroke: #F4FAF6; }
+
 /* Selection */
 ::selection {
-    background: #059669;
-    color: white;
+    background: #F2B632;
+    color: #071109;
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d4d4d8; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #a1a1aa; }
+::-webkit-scrollbar-thumb { background: #1B352A; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #2A4D3D; }
 
 /* Hero overlay grain */
 .grain {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
 }
+
+/* Stadium night backdrop used on full-height screens */
+.stadium-bg {
+    background:
+        radial-gradient(1100px 500px at 85% -10%, rgba(31, 169, 104, 0.14), transparent 60%),
+        radial-gradient(900px 480px at -10% 110%, rgba(242, 182, 50, 0.10), transparent 55%),
+        #071109;
+}
+
+/* Glassy card surface */
+.glass {
+    background: hsl(153 40% 8% / 0.72);
+    backdrop-filter: blur(10px);
+    border: 1px solid #1B352A;
+}
+
+/* Gold gradient text for money / hero moments */
+.text-gold-grad {
+    background: linear-gradient(120deg, #FFD35C 0%, #F2B632 45%, #B97F14 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+/* Skeleton shimmer block */
+.shimmer {
+    background: linear-gradient(90deg, #0F2119 25%, #1B352A 50%, #0F2119 75%);
+    background-size: 800px 100%;
+    animation: shimmer 2.4s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+}
+
+/* ---- Semantic soft-badge remap: light tints become dark stadium tints ---- */
+.bg-amber-50 { background-color: rgb(245 158 11 / 0.10); }
+.bg-amber-100 { background-color: rgb(245 158 11 / 0.16); }
+.bg-emerald-50 { background-color: rgb(16 185 129 / 0.10); }
+.bg-emerald-100 { background-color: rgb(16 185 129 / 0.16); }
+.bg-emerald-200 { background-color: rgb(16 185 129 / 0.22); }
+.bg-red-50 { background-color: rgb(239 68 68 / 0.10); }
+.bg-red-100 { background-color: rgb(239 68 68 / 0.16); }
+.bg-red-200 { background-color: rgb(239 68 68 / 0.22); }
+.bg-blue-50 { background-color: rgb(59 130 246 / 0.10); }
+.bg-blue-100 { background-color: rgb(59 130 246 / 0.16); }
+.bg-sky-50 { background-color: rgb(14 165 233 / 0.10); }
+.bg-sky-100 { background-color: rgb(14 165 233 / 0.16); }
+.bg-sky-200 { background-color: rgb(14 165 233 / 0.22); }
+.bg-rose-50 { background-color: rgb(244 63 94 / 0.10); }
+.bg-rose-100 { background-color: rgb(244 63 94 / 0.16); }
+.bg-rose-200 { background-color: rgb(244 63 94 / 0.22); }
+.bg-yellow-50 { background-color: rgb(234 179 8 / 0.10); }
+.bg-yellow-100 { background-color: rgb(234 179 8 / 0.16); }
+.bg-yellow-200 { background-color: rgb(234 179 8 / 0.22); }
+.bg-orange-50 { background-color: rgb(249 115 22 / 0.10); }
+.bg-orange-100 { background-color: rgb(249 115 22 / 0.16); }
+.bg-orange-200 { background-color: rgb(249 115 22 / 0.22); }
+.bg-orange-50\/50 { background-color: rgb(249 115 22 / 0.05); }
+.bg-violet-50 { background-color: rgb(139 92 246 / 0.10); }
+.bg-violet-100 { background-color: rgb(139 92 246 / 0.16); }
+.bg-violet-200 { background-color: rgb(139 92 246 / 0.22); }
+
+.hover\:bg-amber-50:hover { background-color: rgb(245 158 11 / 0.10); }
+.hover\:bg-amber-100:hover { background-color: rgb(245 158 11 / 0.16); }
+.hover\:bg-emerald-50:hover { background-color: rgb(16 185 129 / 0.10); }
+.hover\:bg-emerald-100:hover { background-color: rgb(16 185 129 / 0.16); }
+.hover\:bg-red-50:hover { background-color: rgb(239 68 68 / 0.10); }
+.hover\:bg-red-100:hover { background-color: rgb(239 68 68 / 0.16); }
+.hover\:bg-sky-50:hover { background-color: rgb(14 165 233 / 0.10); }
+.hover\:bg-sky-100:hover { background-color: rgb(14 165 233 / 0.16); }
+.hover\:bg-rose-50:hover { background-color: rgb(244 63 94 / 0.10); }
+.hover\:bg-rose-100:hover { background-color: rgb(244 63 94 / 0.16); }
+.hover\:bg-yellow-50:hover { background-color: rgb(234 179 8 / 0.10); }
+.hover\:bg-yellow-100:hover { background-color: rgb(234 179 8 / 0.16); }
+.hover\:bg-orange-50:hover { background-color: rgb(249 115 22 / 0.10); }
+.hover\:bg-orange-100:hover { background-color: rgb(249 115 22 / 0.16); }
+.hover\:bg-violet-50:hover { background-color: rgb(139 92 246 / 0.10); }
+.hover\:bg-violet-100:hover { background-color: rgb(139 92 246 / 0.16); }
+
+.text-amber-700 { color: #fcd34d; }
+.text-amber-800 { color: #fde68a; }
+.text-amber-900 { color: #fef3c7; }
+.text-emerald-700 { color: #6ee7b7; }
+.text-emerald-800 { color: #a7f3d0; }
+.text-emerald-900 { color: #d1fae5; }
+.text-red-700 { color: #fca5a5; }
+.text-red-800 { color: #fecaca; }
+.text-red-900 { color: #fee2e2; }
+.text-blue-700 { color: #93c5fd; }
+.text-blue-800 { color: #bfdbfe; }
+.text-blue-900 { color: #dbeafe; }
+.text-sky-700 { color: #7dd3fc; }
+.text-sky-800 { color: #bae6fd; }
+.text-sky-900 { color: #e0f2fe; }
+.text-rose-700 { color: #fda4af; }
+.text-rose-800 { color: #fecdd3; }
+.text-rose-900 { color: #ffe4e6; }
+.text-yellow-700 { color: #fde047; }
+.text-yellow-800 { color: #fef08a; }
+.text-yellow-900 { color: #fef9c3; }
+.text-orange-700 { color: #fdba74; }
+.text-orange-800 { color: #fed7aa; }
+.text-orange-900 { color: #ffedd5; }
+.text-violet-700 { color: #c4b5fd; }
+.text-violet-800 { color: #ddd6fe; }
+.text-violet-900 { color: #ede9fe; }
+
+.border-amber-100 { border-color: rgb(245 158 11 / 0.22); }
+.border-amber-200 { border-color: rgb(245 158 11 / 0.35); }
+.border-amber-300 { border-color: rgb(245 158 11 / 0.45); }
+.border-emerald-100 { border-color: rgb(16 185 129 / 0.22); }
+.border-emerald-200 { border-color: rgb(16 185 129 / 0.35); }
+.border-emerald-300 { border-color: rgb(16 185 129 / 0.45); }
+.border-red-100 { border-color: rgb(239 68 68 / 0.22); }
+.border-red-200 { border-color: rgb(239 68 68 / 0.35); }
+.border-red-300 { border-color: rgb(239 68 68 / 0.45); }
+.border-blue-100 { border-color: rgb(59 130 246 / 0.22); }
+.border-blue-200 { border-color: rgb(59 130 246 / 0.35); }
+.border-sky-100 { border-color: rgb(14 165 233 / 0.22); }
+.border-sky-200 { border-color: rgb(14 165 233 / 0.35); }
+.border-sky-300 { border-color: rgb(14 165 233 / 0.45); }
+.border-rose-100 { border-color: rgb(244 63 94 / 0.22); }
+.border-rose-200 { border-color: rgb(244 63 94 / 0.35); }
+.border-yellow-100 { border-color: rgb(234 179 8 / 0.22); }
+.border-yellow-200 { border-color: rgb(234 179 8 / 0.35); }
+.border-orange-100 { border-color: rgb(249 115 22 / 0.22); }
+.border-orange-200 { border-color: rgb(249 115 22 / 0.35); }
+.border-violet-100 { border-color: rgb(139 92 246 / 0.22); }
+.border-violet-200 { border-color: rgb(139 92 246 / 0.35); }
+
+.ring-emerald-100 { --tw-ring-color: rgb(16 185 129 / 0.35); }
+
+/* Silver medal chip (zinc-300 bg was remapped near the text zinc-700). */
+.bg-zinc-300 { background-color: #5E7869; }
+
+/* ---- Panels that are meant to stay DARK (live centre, winners board, pay box) ---- */
+.bg-zinc-950 { background-color: #050D08; }
+.bg-zinc-900 { background-color: #0A1810; }
+.bg-zinc-800 { background-color: #10261B; }
+.bg-zinc-900\/70 { background-color: rgb(10 24 16 / 0.7); }
+.bg-zinc-900\/60 { background-color: rgb(10 24 16 / 0.6); }
+.bg-zinc-800\/80 { background-color: rgb(16 38 27 / 0.8); }
+.bg-zinc-800\/50 { background-color: rgb(16 38 27 / 0.5); }
+.hover\:bg-zinc-800:hover { background-color: #16301F; }
+.hover\:bg-zinc-700:hover { background-color: #1B3A28; }
+.border-zinc-800 { border-color: #1B352A; }
+.border-zinc-700 { border-color: #2A4D3D; }
+.divide-zinc-800 > :not([hidden]) ~ :not([hidden]) { border-color: #1B352A; }
+
+/* Light-on-dark text shades (the old theme used these inside dark panels). */
+.text-zinc-50 { color: #F7FBF9; }
+.text-zinc-100 { color: #EFF7F2; }
+.text-zinc-200 { color: #DEEDE4; }
+.text-zinc-300 { color: #C4DACC; }
+.text-zinc-400 { color: #93B3A3; }
+
+/* Native form controls render dark (selects, number spinners, checkboxes, date pickers). */
+:root { color-scheme: dark; }
+select { background-color: #0C1A13; color: #F0F7F2; }
+option { background-color: #0C1A13; color: #F0F7F2; }
+textarea { background-color: #0C1A13; color: #F0F7F2; }
+input[type="checkbox"] { accent-color: #1FA968; }
+input[type="radio"] { accent-color: #F2B632; }

@@ -16,6 +16,7 @@ import { payForContest, topUpWallet } from "../lib/razorpay";
 import { alertNewInboxItems } from "../lib/notifications";
 import { checkForUpdate } from "../lib/appUpdate";
 import FantasyApp from "./FantasyApp";
+import { OnboardingTour, CountUp, hasSeenOnboarding, markOnboardingSeen } from "../components/onboarding";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -134,6 +135,7 @@ export default function UserApp() {
   const [stats, setStats] = useState(null);
   const [update, setUpdate] = useState(null);
   const [safety, setSafety] = useState(null);
+  const [tour, setTour] = useState(false);
 
   const loadAll = async () => {
     try {
@@ -174,6 +176,11 @@ export default function UserApp() {
     return () => { alive = false; };
   }, []);
 
+  // First-run tour: waits for the legal gate so the two dialogs never stack.
+  useEffect(() => {
+    if (user?.mobile && legal?.accepted && !hasSeenOnboarding()) setTour(true);
+  }, [user, legal]);
+
   const doLogout = () => { logout(); navigate("/"); };
 
   if (user && !user.mobile) {
@@ -194,7 +201,7 @@ export default function UserApp() {
             <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full" data-testid="wallet-pill">
               <Wallet size={18} weight="duotone" className="text-emerald-700" />
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Wallet</span>
-              <span className="font-heading font-extrabold text-emerald-900 tabular">{money(user?.wallet_balance)}</span>
+              <CountUp value={user?.wallet_balance} fromZero className="font-heading font-extrabold text-emerald-900" />
             </div>
             <NotificationBell refreshToken={notifyToken} />
             <div className="text-right hidden sm:block">
@@ -207,6 +214,8 @@ export default function UserApp() {
           </div>
         </div>
       </nav>
+
+      <OnboardingTour open={tour} onClose={() => { markOnboardingSeen(); setTour(false); }} />
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="mb-8">
@@ -531,17 +540,17 @@ function ContestCard({ contest, onJoin, onFantasy }) {
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Entry fee</div>
           <div className="font-heading text-xl font-extrabold text-zinc-950 tabular mt-1">{money(contest.entry_fee)}</div>
         </div>
-        <div className="bg-orange-50 border border-orange-100 rounded p-3">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-orange-700">Prize pool</div>
-          <div className="font-heading text-xl font-extrabold text-orange-700 tabular mt-1">{money(contest.prize_pool)}</div>
+        <div className="bg-gold-soft border border-gold/25 rounded p-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gold">Prize pool</div>
+          <CountUp value={contest.prize_pool} fromZero duration={1100} className="block font-heading text-xl font-extrabold text-gold mt-1" />
         </div>
       </div>
       {contest.prize_breakdown?.length > 0 && (
-        <div className="mt-3 rounded-md border border-orange-100 bg-orange-50/50 px-3 py-2" data-testid={`prize-breakdown-${contest.id}`}>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-orange-700 mb-1.5">Prize breakdown</div>
+        <div className="mt-3 rounded-md border border-gold/20 bg-gold/10 px-3 py-2" data-testid={`prize-breakdown-${contest.id}`}>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1.5">Prize breakdown</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {contest.prize_breakdown.map((item) => (
-              <span key={item.rank} className="text-zinc-600">Rank <b className="text-zinc-900">{item.rank}</b>: <b className="text-orange-700">{money(item.amount)}</b></span>
+              <span key={item.rank} className="text-zinc-600">Rank <b className="text-zinc-900">{item.rank}</b>: <b className="text-gold">{money(item.amount)}</b></span>
             ))}
           </div>
         </div>
@@ -1060,7 +1069,7 @@ function WinnersBoard({ winners }) {
   if (!winners.length) return null;
   return (
     <div className="mb-6 bg-zinc-950 text-white rounded-lg p-5 border border-zinc-800" data-testid="winners-board">
-      <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-widest">
+      <div className="flex items-center gap-2 text-gold text-xs font-bold uppercase tracking-widest">
         <Trophy size={16} weight="fill" /> Recent winners
       </div>
       <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1070,7 +1079,7 @@ function WinnersBoard({ winners }) {
               <div className="font-heading font-bold truncate">{w.user_name}</div>
               <div className="text-xs text-zinc-400 truncate">{w.contest_title}</div>
             </div>
-            <div className="font-heading font-extrabold text-orange-400 tabular ml-3">{money(w.winner_prize)}</div>
+            <CountUp value={w.winner_prize} fromZero duration={1100} className="font-heading font-extrabold text-gold ml-3" />
           </div>
         ))}
       </div>

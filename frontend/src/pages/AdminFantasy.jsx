@@ -331,12 +331,12 @@ function LiveCenterPanel({ match, onMatchChanged }) {
       </div>
 
       {(live.innings || []).length > 0 && (
-        <div className="bg-zinc-950 text-white rounded-lg p-5" data-testid="admin-live-preview">
+        <div className="bg-night text-white rounded-lg p-5 border border-night-line" data-testid="admin-live-preview">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">What users see{live.auto_live ? " · auto-refresh on" : ""}</div>
           <div className="text-sm font-bold mt-1" data-testid="admin-live-status">{live.status_text || "no status line"}</div>
           <div className="flex flex-wrap gap-2 mt-3">
             {live.innings.map((r, i) => (
-              <div key={`${r.innings}-${i}`} className="bg-zinc-800 rounded-md px-3 py-2">
+              <div key={`${r.innings}-${i}`} className="bg-night-card rounded-md px-3 py-2 border border-night-line">
                 <div className="text-[10px] uppercase tracking-widest text-zinc-400">{r.innings || `Innings ${i + 1}`}</div>
                 <div className="text-lg font-extrabold tabular">{r.runs}/{r.wickets}</div>
                 {r.overs ? <div className="text-[11px] text-zinc-400 tabular">{r.overs} ov</div> : null}
@@ -529,15 +529,15 @@ function SquadPanel({ match }) {
               {(bySide[side] || []).map((p) => (
                 <div key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm" data-testid={`squad-player-${p.id}`}>
                   <span className="flex-1 truncate font-semibold text-zinc-800">{p.name}</span>
-                  <select value={p.role} onChange={(e) => patch(p.id, { role: e.target.value })} className="rounded border border-zinc-200 text-[11px] font-bold px-1 py-0.5" data-testid={`role-of-${p.id}`}>
+                  <select value={p.role} onChange={(e) => patch(p.id, { role: e.target.value })} className="rounded border border-zinc-200 bg-transparent text-[11px] font-bold px-1 py-0.5 text-zinc-800" data-testid={`role-of-${p.id}`}>
                     {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                   <input type="number" step="0.5" min="0.5" max="20" defaultValue={p.credits}
                     onBlur={(e) => Number(e.target.value) !== p.credits && patch(p.id, { credits: Number(e.target.value) })}
-                    className="w-14 rounded border border-zinc-200 text-[11px] font-bold px-1 py-0.5 tabular" data-testid={`credits-of-${p.id}`} />
+                    className="w-14 rounded border border-zinc-200 bg-transparent text-[11px] font-bold px-1 py-0.5 tabular text-zinc-800" data-testid={`credits-of-${p.id}`} />
                   <input type="number" step="1" min="0" max="500" defaultValue={p.projection || 0} title="Projected fantasy points"
                     onBlur={(e) => Number(e.target.value) !== (p.projection || 0) && patch(p.id, { projection: Number(e.target.value) })}
-                    className="w-14 rounded border border-violet-200 bg-violet-50/60 text-[11px] font-bold px-1 py-0.5 tabular text-violet-800" data-testid={`projection-of-${p.id}`} />
+                    className="w-14 rounded border border-violet-200 bg-violet-50 text-[11px] font-bold px-1 py-0.5 tabular text-violet-800" data-testid={`projection-of-${p.id}`} />
                   <button type="button" onClick={() => patch(p.id, { playing: !p.playing })} title="Playing in XI?"
                     className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${p.playing ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`} data-testid={`playing-of-${p.id}`}>
                     {p.playing ? "XI" : "out"}
@@ -883,7 +883,7 @@ function ScorecardPanel({ match, onMatchChanged }) {
                       </button>
                     ) : (
                       <input type="number" min="0" value={r[k]} onChange={(e) => upd(r.player_id, k, e.target.value)} step={k === "overs" ? "0.1" : "1"}
-                        style={{ width: w }} className="h-7 rounded border border-zinc-200 px-1 text-xs text-center tabular focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        style={{ width: w }} className="h-7 rounded border border-zinc-200 bg-transparent px-1 text-xs text-center tabular text-zinc-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                         data-testid={`cell-${k}-${r.player_id}`} />
                     )}
                   </TableCell>
