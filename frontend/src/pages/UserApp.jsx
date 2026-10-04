@@ -21,7 +21,7 @@ import { ReferralCard, BadgeShelf, SeasonLadder } from "../components/growth";
 import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
 import { BottomNav } from "../components/bottomNav";
 import { MatchCarousel } from "../components/matchCarousel";
-import { SportStrip, ContestLobby, TurfCard, SPORTS } from "../components/turf";
+import { SportStrip, ContestLobby, TurfCard, TurfMark, SPORTS } from "../components/turf";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -257,7 +257,7 @@ export default function UserApp() {
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <AvatarTrigger user={user} onClick={() => setMoreOpen(true)} />
             <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950 min-w-0">
-              <CricketBall weight="fill" className="text-turf shrink-0" size={24} />
+              <TurfMark size={26} className="shrink-0" rounded={9} />
               <span className="truncate">PitchPlay</span>
             </div>
           </div>

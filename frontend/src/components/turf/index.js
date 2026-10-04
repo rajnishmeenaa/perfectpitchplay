@@ -10,6 +10,7 @@
  * organisms. Nothing in this directory talks to the API.
  */
 export * from "./tokens";
+export * from "./brand";
 export * from "./atoms";
 export * from "./molecules";
 export * from "./organisms";

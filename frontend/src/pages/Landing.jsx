@@ -7,9 +7,10 @@ import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { ArrowRight, ShieldCheck, Lightning, Trophy, GoogleLogo, NumberCircleOne, NumberCircleTwo, NumberCircleThree, Sparkle } from "@phosphor-icons/react";
 import OtpAuth from "../components/otpAuth";
+import { TurfLogo } from "../components/turf";
 
 const HERO = process.env.PUBLIC_URL + "/brand/hero-stadium.jpg";
-const LOGO = process.env.PUBLIC_URL + "/brand/logo-gold.png";
+
 
 const STEPS = [
   { icon: NumberCircleOne, title: "Pick your contest", body: "Join a mega league, a head-to-head, or a private contest from a friend's code." },
@@ -69,9 +70,8 @@ export default function Landing() {
       {/* Nav */}
       <nav className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-zinc-200">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 font-heading font-extrabold text-lg text-zinc-950" data-testid="brand-logo">
-            <img src={LOGO} alt="PitchPlay" className="h-9 w-9 rounded-xl object-cover ring-1 ring-zinc-200" />
-            <span className="tracking-tight">Pitch<span className="text-turf-grad">Play</span></span>
+          <div className="flex items-center gap-2.5" data-testid="brand-logo">
+            <TurfLogo mark={36} size="text-xl" />
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -98,9 +98,11 @@ export default function Landing() {
           <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-card">
             <img src={HERO} alt="Stadium under lights" className="w-full h-[420px] object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
+            <div className="absolute inset-0 bg-turf/20 mix-blend-color" />
+            <div className="absolute inset-0 bg-gradient-to-br from-turf/25 via-transparent to-neon/10" />
             <div className="grain absolute inset-0 opacity-20 mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 p-10 flex flex-col justify-end">
-              <span className="inline-flex items-center gap-2 self-start bg-turf text-ink text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-glow-turf">
+              <span className="inline-flex items-center gap-2 self-start bg-turf text-white text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-glow-turf">
                 <Sparkle weight="fill" size={12} /> Live Match Centre
               </span>
               <h1 className="mt-4 font-heading text-white text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tighter leading-[1.05]">
