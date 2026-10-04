@@ -4,12 +4,12 @@ import { api } from "../lib/api";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Tabs, TabsContent } from "../components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, FirstAid, CheckCircle, Coins } from "@phosphor-icons/react";
+import { Baseball as CricketBall, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, CaretLeft, FirstAid, CheckCircle, Coins, ArrowRight, Gift } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
@@ -19,6 +19,8 @@ import FantasyApp from "./FantasyApp";
 import { OnboardingTour, CountUp, hasSeenOnboarding, markOnboardingSeen } from "../components/onboarding";
 import { ReferralCard, BadgeShelf, SeasonLadder } from "../components/growth";
 import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
+import { BottomNav } from "../components/bottomNav";
+import { MatchCarousel } from "../components/matchCarousel";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -42,6 +44,22 @@ const StatusBadge = ({ status }) => {
 };
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+
+/** How full a contest is, clamped so the bar never lies about capacity. */
+const fillPct = (c) => {
+  const cap = Number(c?.max_participants || 0);
+  if (!cap) return 0;
+  return Math.min(100, Math.max(0, Math.round((Number(c?.participants_count || 0) / cap) * 100)));
+};
+
+// Screens reached from the account menu rather than the bottom bar.
+const SECTION_TITLES = {
+  stats: "My stats & rewards",
+  safety: "Play safely",
+  entries: "My contests",
+  wallet: "Wallet",
+  fantasy: "Fantasy",
+};
 
 function MobileGate({ name, onSaved, setMobile, onLogout }) {
   const [mobile, setMobileVal] = useState("");
@@ -140,10 +158,12 @@ export default function UserApp() {
   const [tour, setTour] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [focusSection, setFocusSection] = useState(null);
+  const [matches, setMatches] = useState([]);
+  const [matchFilter, setMatchFilter] = useState(null);
 
   const loadAll = async () => {
     try {
-      const [c, e, w, cfg, me, h, win, lg, st, sf] = await Promise.all([
+      const [c, e, w, cfg, me, h, win, lg, st, sf, ms] = await Promise.all([
         api.get("/contests"),
         api.get("/entries/mine"),
         api.get("/withdrawals/mine"),
@@ -154,6 +174,7 @@ export default function UserApp() {
         api.get("/legal/config"),
         api.get("/me/season-stats"),
         api.get("/me/safety"),
+        api.get("/matches"),
       ]);
       setContests(c.data);
       setEntries(e.data);
@@ -165,6 +186,7 @@ export default function UserApp() {
       setLegal(lg.data);
       setStats(st.data);
       setSafety(sf.data);
+      setMatches(ms.data);
       setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
@@ -210,22 +232,31 @@ export default function UserApp() {
 
   const mustAccept = !!legal && !legal.accepted;
 
+  // Home strip: anything not finished, soonest first (the API already sorts).
+  const stripMatches = matches.filter((m) => m.status !== "completed").slice(0, 12);
+  const shownContests = matchFilter ? contests.filter((c) => c.match_id === matchFilter) : contests;
+  const picked = matches.find((m) => m.id === matchFilter);
+  const filterLabel = picked ? `${picked.team_a_short} vs ${picked.team_b_short}` : "";
+  const liveContests = entries.filter((e) => ["pending", "approved"].includes(e.status)).length;
+
   return (
     <div className="min-h-screen bg-zinc-100" data-testid="user-app">
       <nav className="sticky top-0 z-20 bg-white/95 backdrop-blur-md border-b border-zinc-200">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950">
-            <CricketBall weight="fill" className="text-emerald-600" size={26} />
-            PitchPlay
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <AvatarTrigger user={user} onClick={() => setMoreOpen(true)} />
+            <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950 min-w-0">
+              <CricketBall weight="fill" className="text-gold shrink-0" size={24} />
+              <span className="truncate">PitchPlay</span>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 shrink-0">
             <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full" data-testid="wallet-pill">
               <Wallet size={18} weight="duotone" className="text-emerald-700" />
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Wallet</span>
               <CountUp value={user?.wallet_balance} fromZero className="font-heading font-extrabold text-emerald-900" />
             </div>
             <NotificationBell refreshToken={notifyToken} />
-            <AvatarTrigger user={user} onClick={() => setMoreOpen(true)} />
           </div>
         </div>
       </nav>
@@ -244,13 +275,30 @@ export default function UserApp() {
         version={update?.current?.version || update?.current?.build || ""}
       />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="mb-8">
-          <h1 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tighter text-zinc-950">
-            Hey {user?.name?.split(" ")[0]}, ready to play?
-          </h1>
-          <p className="text-zinc-500 mt-1">Browse the live contests, pay securely online and get instant access to the pitch.</p>
-        </div>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pt-5 sm:pt-8 pb-32">
+        {tab === "contests" ? (
+          <div className="mb-5">
+            <h1 className="font-heading text-2xl sm:text-4xl font-extrabold tracking-tighter text-zinc-950">
+              Hey {user?.name?.split(" ")[0]}, ready to play?
+            </h1>
+            <p className="text-zinc-500 mt-1 text-sm">Pick a match, build your XI and get into the contests.</p>
+          </div>
+        ) : (
+          <div className="mb-5 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setTab("contests")}
+              className="h-9 w-9 shrink-0 grid place-items-center rounded-full border border-night-line bg-night-card text-zinc-300 active:scale-95"
+              aria-label="Back to contests"
+              data-testid="back-home-btn"
+            >
+              <CaretLeft size={16} weight="bold" />
+            </button>
+            <h1 className="font-heading text-xl sm:text-2xl font-extrabold tracking-tight text-zinc-950 truncate">
+              {SECTION_TITLES[tab] || "PitchPlay"}
+            </h1>
+          </div>
+        )}
 
         {update && update.latest?.apk_url && (
           <div className="mb-6 bg-emerald-950 text-white rounded-lg p-4 flex flex-wrap items-center gap-3" data-testid="update-banner">
@@ -272,35 +320,37 @@ export default function UserApp() {
         {safety && <RealityCheck minutes={safety.reality_check_minutes} message={safety.reality_check_message} onTakeBreak={() => setTab("safety")} />}
 
         <Tabs value={tab} onValueChange={setTab} className="w-full">
-          <TabsList className="bg-white border border-zinc-200 rounded-full p-1 h-auto" data-testid="tabs-list">
-            <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-contests">
-              <Ticket size={16} className="mr-1.5" /> Contests
-            </TabsTrigger>
-            <TabsTrigger value="fantasy" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-fantasy">
-              <Flag size={16} className="mr-1.5" /> Fantasy
-            </TabsTrigger>
-            <TabsTrigger value="entries" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-entries">
-              <Trophy size={16} className="mr-1.5" /> My Entries
-            </TabsTrigger>
-            <TabsTrigger value="stats" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-stats">
-              <ChartBar size={16} className="mr-1.5" /> My Stats
-            </TabsTrigger>
-            <TabsTrigger value="wallet" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-wallet">
-              <Wallet size={16} className="mr-1.5" /> Wallet
-            </TabsTrigger>
-            <TabsTrigger value="safety" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-safety">
-              <ShieldCheck size={16} className="mr-1.5" /> Play safely
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="contests" className="mt-6">
+          <TabsContent value="contests" className="mt-0">
             {justJoined && <SuccessBanner entry={justJoined} onClose={() => setJustJoined(null)} />}
+
+            <MatchCarousel matches={stripMatches} selectedId={matchFilter} onSelect={setMatchFilter} />
+
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <QuickAction icon={Flag} label="Create Team" hint="Pick your XI" onClick={() => setTab("fantasy")} testid="qa-create-team" />
+              <QuickAction icon={Gift} label="Invite & earn" hint="Bonus for every friend" onClick={() => goTo("stats")} testid="qa-invite" />
+            </div>
+
+            {matchFilter && (
+              <div className="mt-4 flex items-center gap-2 text-xs" data-testid="match-filter-chip">
+                <span className="font-bold uppercase tracking-widest text-zinc-500">Showing</span>
+                <span className="inline-flex items-center gap-2 rounded-full bg-gold/15 border border-gold/40 px-3 py-1 font-extrabold text-gold">
+                  {filterLabel}
+                  <button type="button" onClick={() => setMatchFilter(null)} className="text-gold/80 hover:text-gold" aria-label="Clear match filter" data-testid="match-filter-clear">
+                    <X size={13} weight="bold" />
+                  </button>
+                </span>
+              </div>
+            )}
+
             <WinnersBoard winners={winners} />
-            {contests.length === 0 ? (
-              <EmptyState title="No contests yet" body="The admin hasn't dropped any contest. Check back soon." />
+            {shownContests.length === 0 ? (
+              <EmptyState
+                title={matchFilter ? "No contests for this match" : "No contests yet"}
+                body={matchFilter ? "Pick another match, or clear the filter to see everything open." : "The admin hasn't dropped any contest. Check back soon."}
+              />
             ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {contests.map((c) => (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 mt-2">
+                {shownContests.map((c) => (
                   <ContestCard
                     key={c.id}
                     contest={c}
@@ -465,6 +515,14 @@ export default function UserApp() {
         </Tabs>
       </main>
 
+      <BottomNav
+        active={tab}
+        onChange={setTab}
+        openEntries={liveContests}
+        balance={user?.wallet_balance}
+        onMore={() => setMoreOpen(true)}
+      />
+
       <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} bonusBalance={user?.bonus_balance || 0} onTopUp={() => setTopUpOpen(true)} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} config={config} />
       <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} />
@@ -543,6 +601,26 @@ function useCountdown(iso) {
   return { over: false, urgent: diff < 3600000, text: d > 0 ? `${d}d ${pad(h)}h ${pad(m)}m` : `${pad(h)}:${pad(m)}:${pad(s)}` };
 }
 
+/** Big thumb-reachable shortcut tile used on the home screen. */
+function QuickAction({ icon: Icon, label, hint, onClick, testid }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center justify-between gap-2 rounded-2xl border border-night-line bg-night-card px-4 py-4 text-left hover:border-gold/50 active:scale-[0.98] transition-all"
+      data-testid={testid}
+    >
+      <span className="min-w-0">
+        <span className="flex items-center gap-2 font-heading text-[15px] font-extrabold text-zinc-50 truncate">
+          <Icon size={17} weight="fill" className="text-gold shrink-0" /> {label}
+        </span>
+        <span className="block text-[11px] text-zinc-500 mt-0.5 truncate">{hint}</span>
+      </span>
+      <ArrowRight size={18} weight="bold" className="text-zinc-500 shrink-0" />
+    </button>
+  );
+}
+
 function ContestCard({ contest, onJoin, onFantasy }) {
   const cd = useCountdown(contest.match_time);
   const closed = contest.status !== "open" || (cd && cd.over);
@@ -572,9 +650,32 @@ function ContestCard({ contest, onJoin, onFantasy }) {
           <WhatsappLogo size={22} weight="fill" />
         </button>
       </div>
-      {cd && (
-        <div className={`mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold tabular ${cd.over ? "bg-zinc-100 text-zinc-600" : cd.urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-orange-50 text-orange-800 border border-orange-100"}`} data-testid={`countdown-${contest.id}`}>
-          <Clock size={16} weight="bold" /> {cd.over ? cd.text : `Entries close in ${cd.text}`}
+      {contest.status !== "open" ? (
+        <div className="mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold bg-zinc-100 text-zinc-600" data-testid={`closed-note-${contest.id}`}>
+          <Clock size={16} weight="bold" /> {contest.status === "completed" ? "Results are in" : "Entries closed"}
+        </div>
+      ) : cd && (cd.over ? (
+        <div className="mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold bg-zinc-100 text-zinc-600" data-testid={`countdown-${contest.id}`}>
+          <Clock size={16} weight="bold" /> Match started — entries are closed
+        </div>
+      ) : (
+        <div className={`mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold tabular ${cd.urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-orange-50 text-orange-800 border border-orange-100"}`} data-testid={`countdown-${contest.id}`}>
+          <Clock size={16} weight="bold" /> Entries close in {cd.text}
+        </div>
+      ))}
+      {contest.max_participants > 0 && (
+        <div className="mt-4" data-testid={`spots-${contest.id}`}>
+          <div className="flex items-baseline gap-2 text-[11px] tabular">
+            <span className={`font-extrabold ${contest.participants_count >= contest.max_participants * 0.9 ? "text-red-400" : "text-gold"}`}>
+              {Math.max(contest.max_participants - contest.participants_count, 0).toLocaleString("en-IN")} left
+            </span>
+            <span className="text-zinc-600">|</span>
+            <span className="text-zinc-500">{contest.max_participants.toLocaleString("en-IN")} spots</span>
+            <span className="ml-auto text-zinc-500">{fillPct(contest)}% full</span>
+          </div>
+          <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden" role="presentation">
+            <div className="h-full rounded-full bg-gold transition-[width] duration-500" style={{ width: `${Math.max(fillPct(contest), 2)}%` }} data-testid={`spots-bar-${contest.id}`} />
+          </div>
         </div>
       )}
       <div className="grid grid-cols-2 gap-3 mt-5">
@@ -598,8 +699,10 @@ function ContestCard({ contest, onJoin, onFantasy }) {
         </div>
       )}
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-zinc-100">
-        <div className="text-xs text-zinc-500 tabular">
-          {contest.participants_count}/{contest.max_participants} joined
+        <div className="text-xs text-zinc-500 tabular" data-testid={`joined-${contest.id}`}>
+          {contest.prize_breakdown?.length
+            ? `Prizes for top ${contest.prize_breakdown.length}`
+            : `${contest.participants_count || 0} playing`}
         </div>
         {isFantasy ? (
           <Button

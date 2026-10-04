@@ -156,8 +156,8 @@ export function AvatarTrigger({ user, onClick }) {
       <span className="h-9 w-9 shrink-0 rounded-full bg-gold/15 border border-gold/40 flex items-center justify-center font-heading text-base font-extrabold text-gold" data-testid="avatar-initial">
         {name.charAt(0).toUpperCase()}
       </span>
-      <span className="block max-w-[92px] sm:max-w-[150px] truncate font-heading text-sm font-extrabold uppercase tracking-tight text-zinc-100">{name}</span>
-      <CaretRight size={15} weight="bold" className="text-zinc-500" />
+      <span className="hidden sm:block max-w-[150px] truncate font-heading text-sm font-extrabold uppercase tracking-tight text-zinc-100">{name}</span>
+      <CaretRight size={15} weight="bold" className="hidden sm:block text-zinc-500" />
     </button>
   );
 }
