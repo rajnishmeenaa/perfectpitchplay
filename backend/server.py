@@ -3509,8 +3509,9 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 4, "version_name": "1.3.0", "apk_url": "",
-                        "notes": "Live match centre, team insights and play-safety controls", "force_update": False}
+APP_VERSION_DEFAULTS = {"version_code": 5, "version_name": "1.4.0", "apk_url": "",
+                        "notes": "Stadium Gold redesign, invite rewards, badge cabinet and season ladder",
+                        "force_update": False}
 
 
 async def app_release() -> dict:
