@@ -735,6 +735,11 @@ function SettleButton({ contest, match, onDone }) {
           </DialogHeader>
           {preview && (
             <div className="border border-zinc-200 rounded-lg overflow-hidden">
+              {Number(preview.leaderboard?.[0]?.tax_percent || 0) > 0 && (
+                <div className="px-4 py-2 bg-gold/10 border-b border-gold/20 text-[11px] font-bold uppercase tracking-widest text-gold" data-testid="settle-tax-note">
+                  {preview.leaderboard[0].tax_percent}% tax withheld on every prize
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -743,6 +748,8 @@ function SettleButton({ contest, match, onDone }) {
                     <TableHead>Team</TableHead>
                     <TableHead className="text-right">Points</TableHead>
                     <TableHead className="text-right">Prize</TableHead>
+                    {Number(preview.leaderboard?.[0]?.tax_percent || 0) > 0 && <TableHead className="text-right">Tax</TableHead>}
+                    <TableHead className="text-right">Pays</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -752,7 +759,15 @@ function SettleButton({ contest, match, onDone }) {
                       <TableCell className="truncate max-w-[140px]">{r.user_name}</TableCell>
                       <TableCell className="truncate max-w-[140px] text-zinc-500">{r.team_name}</TableCell>
                       <TableCell className="text-right font-extrabold tabular">{r.points}</TableCell>
-                      <TableCell className="text-right font-bold text-orange-700 tabular">{r.prize ? money(r.prize) : "—"}</TableCell>
+                      <TableCell className="text-right font-bold text-gold tabular">{r.prize ? money(r.prize) : "—"}</TableCell>
+                      {Number(r.tax_percent || 0) > 0 && (
+                        <TableCell className="text-right text-xs font-bold text-red-400 tabular" data-testid={`settle-tax-${r.rank}`}>
+                          {r.tax_amount ? `−${money(r.tax_amount)}` : "—"}
+                        </TableCell>
+                      )}
+                      <TableCell className="text-right font-extrabold tabular" data-testid={`settle-net-${r.rank}`}>
+                        {r.prize ? money(r.net_prize ?? r.prize) : "—"}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

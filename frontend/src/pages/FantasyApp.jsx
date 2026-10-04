@@ -56,7 +56,9 @@ const StatusChip = ({ status }) => {
   return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${map[status] || "bg-zinc-100 text-zinc-600"}`} data-testid={`match-status-${status}`}>{status === "upcoming" ? "upcoming" : status}</span>;
 };
 
-export default function FantasyApp({ config, walletBalance = 0, focusMatchId, entries = [], onJoinFantasy, onMoneyChanged }) {
+export default function FantasyApp({ config, walletBalance = 0, bonusBalance = 0, focusMatchId, entries = [], onJoinFantasy, onMoneyChanged }) {
+  // Bonus cash pays entry fees too, so affordability uses the combined amount.
+  const spendable = Number(walletBalance || 0) + Number(bonusBalance || 0);
   const [matches, setMatches] = useState([]);
   const [matchId, setMatchId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -149,7 +151,7 @@ export default function FantasyApp({ config, walletBalance = 0, focusMatchId, en
           detail={detail}
           reload={() => loadDetail(matchId)}
           config={config}
-          walletBalance={walletBalance}
+          walletBalance={spendable}
           onJoinFantasy={onJoinFantasy}
           onMoneyChanged={onMoneyChanged}
         />
@@ -1192,7 +1194,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
           <div className="flex flex-wrap items-center gap-2">
             <Wallet size={16} weight="fill" className="text-emerald-600" />
             <span className="text-sm font-extrabold text-zinc-900">Play one XI in several contests</span>
-            <span className="text-[11px] text-zinc-500">paid from your wallet ({money(walletBalance)})</span>
+            <span className="text-[11px] text-zinc-500">paid from your available balance ({money(walletBalance)})</span>
           </div>
           <div className="flex flex-wrap items-center gap-2 mt-3">
             <select

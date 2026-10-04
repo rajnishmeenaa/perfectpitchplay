@@ -9,6 +9,8 @@ import os
 import re
 import io
 import csv
+import time
+import secrets
 import asyncio
 import hashlib
 import logging
@@ -219,6 +221,7 @@ class ContestCreate(BaseModel):
     kind: str = "classic"  # "classic" | "fantasy"
     match_id: Optional[str] = None
     max_teams_per_user: int = Field(default=1, ge=1, le=20)
+    auto_close_at_start: bool = True  # ops loop closes entries once match_time has passed
 
 
 class ContestUpdate(BaseModel):
@@ -234,6 +237,7 @@ class ContestUpdate(BaseModel):
     kind: Optional[str] = None  # "classic" | "fantasy"
     match_id: Optional[str] = None
     max_teams_per_user: Optional[int] = Field(default=None, ge=1, le=20)
+    auto_close_at_start: Optional[bool] = None
 
 
 class WithdrawalCreate(BaseModel):
@@ -619,10 +623,13 @@ async def get_joinable_contest(contest_id: str, user: dict) -> dict:
 
 # ---------- Auth ----------
 @api_router.post("/auth/signup")
-async def signup(body: SignupBody):
+async def signup(body: SignupBody, request: Request):
     mobile = body.mobile.strip()
+    key = f"signup:{mobile}:{client_ip(request)}"
+    rate_limit_check("auth", key)
     existing = await db.users.find_one({"mobile": mobile})
     if existing:
+        rate_limit_hit("auth", key)
         raise HTTPException(status_code=400, detail="Mobile already registered")
     user_id = str(uuid.uuid4())
     doc = {
@@ -632,21 +639,29 @@ async def signup(body: SignupBody):
         "password_hash": hash_password(body.password),
         "role": "user",
         "wallet_balance": 0.0,
+        "bonus_balance": 0.0,
         "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
+    rate_limit_clear("auth", key)
     token = create_token(user_id, "user")
-    return {"token": token, "user": {"id": user_id, "name": doc["name"], "mobile": mobile, "role": "user", "wallet_balance": 0.0}}
+    return {"token": token, "user": {"id": user_id, "name": doc["name"], "mobile": mobile, "role": "user",
+                                     "wallet_balance": 0.0, "bonus_balance": 0.0}}
 
 
 @api_router.post("/auth/login")
-async def login(body: LoginBody):
+async def login(body: LoginBody, request: Request):
     mobile = body.mobile.strip()
+    key = f"{mobile}:{client_ip(request)}"
+    # Only wrong passwords accumulate — a busy admin or a shared NAT IP is never locked out.
+    rate_limit_check("auth", key)
     user = await db.users.find_one({"mobile": mobile}, {"_id": 0})
     if not user or not verify_password(body.password, user["password_hash"]):
+        rate_limit_hit("auth", key)
         raise HTTPException(status_code=401, detail="Invalid mobile or password")
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail="Your account is blocked. Contact admin.")
+    rate_limit_clear("auth", key)
     token = create_token(user["id"], user["role"])
     return {
         "token": token,
@@ -656,6 +671,7 @@ async def login(body: LoginBody):
             "mobile": user["mobile"],
             "role": user["role"],
             "wallet_balance": user.get("wallet_balance", 0.0),
+            "bonus_balance": round(float(user.get("bonus_balance") or 0), 2),
         },
     }
 
@@ -670,6 +686,7 @@ async def me(user=Depends(get_current_user)):
         "picture": user.get("picture"),
         "role": user["role"],
         "wallet_balance": user.get("wallet_balance", 0.0),
+        "bonus_balance": round(float(user.get("bonus_balance") or 0), 2),
         "needs_mobile": not user.get("mobile"),
     }
 
@@ -799,6 +816,7 @@ async def create_contest(body: ContestCreate, admin=Depends(require_admin)):
         "kind": kind,
         "match_id": body.match_id if kind == "fantasy" else None,
         "max_teams_per_user": body.max_teams_per_user if kind == "fantasy" else 1,
+        "auto_close_at_start": bool(body.auto_close_at_start),
         "status": "open",
         "created_at": now_iso(),
         "created_by": admin["id"],
@@ -858,6 +876,7 @@ async def create_entry(
     team_id: str = Form(""),
     user=Depends(get_current_user),
 ):
+    rate_limit("join", user["id"])
     settings = await get_payment_settings()
     if not settings.get("manual_upi_enabled", True):
         raise HTTPException(status_code=400, detail="Manual UPI payment is disabled. Please pay online.")
@@ -907,16 +926,30 @@ async def create_entry(
 @api_router.post("/entries/wallet")
 async def create_entry_wallet(body: WalletEntryBody, user=Depends(get_current_user)):
     """Pay the entry fee directly from the user's in-app wallet balance. Auto-approved."""
+    rate_limit("join", user["id"])
     contest = await get_joinable_contest(body.contest_id, user)
     team = await resolve_entry_team(contest, user, body.team_id)
     fee = float(contest["entry_fee"])
     if fee <= 0:
         raise HTTPException(status_code=400, detail="This contest cannot be joined with wallet balance")
-    # Atomic conditional debit — only succeeds if the wallet has enough funds.
-    res = await db.users.update_one(
-        {"id": user["id"], "wallet_balance": {"$gte": fee}},
-        {"$inc": {"wallet_balance": -fee}},
-    )
+    # Bonus cash pays first (it can never be withdrawn), then the withdrawable wallet.
+    settlement = await get_settlement_settings()
+    cash = round(float(user.get("wallet_balance") or 0), 2)
+    bonus = round(float(user.get("bonus_balance") or 0), 2) if settlement["bonus_join_enabled"] else 0.0
+    if round(cash + bonus, 2) + 0.001 < fee:
+        raise HTTPException(status_code=400, detail="Insufficient wallet balance. Please top up to continue.")
+    from_bonus = min(bonus, fee)
+    from_cash = round(fee - from_bonus, 2)
+    # Atomic conditional debit — only succeeds if both balances still cover their share.
+    cond = {"id": user["id"]}
+    inc = {}
+    if from_cash:
+        cond["wallet_balance"] = {"$gte": from_cash}
+        inc["wallet_balance"] = -from_cash
+    if from_bonus:
+        cond["bonus_balance"] = {"$gte": from_bonus}
+        inc["bonus_balance"] = -from_bonus
+    res = await db.users.update_one(cond, {"$inc": inc})
     if res.matched_count == 0:
         raise HTTPException(status_code=400, detail="Insufficient wallet balance. Please top up to continue.")
     entry_id = str(uuid.uuid4())
@@ -938,17 +971,27 @@ async def create_entry_wallet(body: WalletEntryBody, user=Depends(get_current_us
         "decision_note": "Auto-approved via wallet payment",
         "decided_at": now_iso(),
         "winner_prize": 0.0,
+        "paid_cash": from_cash,
+        "paid_bonus": from_bonus,
         "created_at": now_iso(),
     }
     await db.entries.insert_one(doc)
-    await db.wallet_logs.insert_one({
-        "id": str(uuid.uuid4()), "user_id": user["id"], "amount": -fee,
-        "note": f"Entry fee · {contest['title']}", "by": "system", "created_at": now_iso(),
-    })
+    logs = []
+    if from_cash:
+        logs.append({"id": str(uuid.uuid4()), "user_id": user["id"], "amount": -from_cash, "kind": "cash",
+                     "note": f"Entry fee · {contest['title']}", "by": "system", "created_at": now_iso()})
+    if from_bonus:
+        logs.append({"id": str(uuid.uuid4()), "user_id": user["id"], "amount": -from_bonus, "kind": "bonus",
+                     "note": f"Entry fee (bonus) · {contest['title']}", "by": "system", "created_at": now_iso()})
+    for log in logs:
+        await db.wallet_logs.insert_one(log)
+    paid_with = f"{inr(from_bonus)} bonus" if from_cash == 0 else (
+        f"{inr(from_cash)} wallet + {inr(from_bonus)} bonus" if from_bonus else "your wallet")
     await push_notification(
         user["id"], "entry", "Entry confirmed",
-        f"You joined {contest['title']} using your wallet. {inr(fee)} deducted. Good luck!",
-        {"contest_id": contest["id"], "entry_id": entry_id, "amount": fee},
+        f"You joined {contest['title']} using {paid_with}. {inr(fee)} deducted. Good luck!",
+        {"contest_id": contest["id"], "entry_id": entry_id, "amount": fee,
+         "paid_cash": from_cash, "paid_bonus": from_bonus},
     )
     doc.pop("_id", None)
     doc["external_link"] = contest.get("external_link")
@@ -1076,6 +1119,7 @@ async def rzp_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
 # ---------- Wallet top-up (Razorpay) ----------
 @api_router.post("/wallet/topup/order")
 async def wallet_topup_order(body: WalletTopupOrderBody, user=Depends(get_current_user)):
+    rate_limit("topup", user["id"])
     await enforce_deposit_safety(user, float(body.amount))
     if not rzp_client:
         raise HTTPException(status_code=503, detail="Online payments not configured")
@@ -1373,11 +1417,15 @@ async def wallet_config(user=Depends(get_current_user)):
 async def wallet_history(user=Depends(get_current_user)):
     items = []
     async for e in db.entries.find({"user_id": user["id"], "status": "won"}, {"_id": 0}):
-        items.append({"id": e["id"], "type": "prize", "amount": e.get("winner_prize", 0), "note": f"Won {e['contest_title']}", "created_at": e.get("won_at") or e["created_at"]})
+        items.append({"id": e["id"], "type": "prize", "kind": "cash", "amount": e.get("winner_prize", 0),
+                      "tax_amount": e.get("tax_amount", 0), "prize_gross": e.get("prize_gross"),
+                      "note": f"Won {e['contest_title']}", "created_at": e.get("won_at") or e["created_at"]})
     async for w in db.withdrawals.find({"user_id": user["id"]}, {"_id": 0}):
-        items.append({"id": w["id"], "type": "payout", "amount": -w["amount"], "note": f"Withdrawal to {w['upi_id']} ({w['status']})", "created_at": w["created_at"]})
+        items.append({"id": w["id"], "type": "payout", "kind": "cash", "amount": -w["amount"],
+                      "note": f"Withdrawal to {w['upi_id']} ({w['status']})", "created_at": w["created_at"]})
     async for l in db.wallet_logs.find({"user_id": user["id"]}, {"_id": 0}):
-        items.append({"id": l["id"], "type": "credit" if l["amount"] > 0 else "debit", "amount": l["amount"], "note": l.get("note") or "Admin adjustment", "created_at": l["created_at"]})
+        items.append({"id": l["id"], "type": "credit" if l["amount"] > 0 else "debit", "kind": l.get("kind") or "cash",
+                      "amount": l["amount"], "note": l.get("note") or "Admin adjustment", "created_at": l["created_at"]})
     items.sort(key=lambda x: x["created_at"], reverse=True)
     return items
 
@@ -1457,6 +1505,7 @@ async def admin_remove_qr(admin=Depends(require_admin)):
 async def create_withdrawal(body: WithdrawalCreate, user=Depends(get_current_user)):
     if user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot request withdrawal")
+    rate_limit("withdraw", user["id"])
     g = await get_guard_settings()
     await require_terms(user)
     upi = (body.upi_id or "").strip()
@@ -2048,11 +2097,17 @@ async def admin_settle_contest(contest_id: str, body: SettleBody, admin=Depends(
     ).to_list(5000)
     board = await build_leaderboard(contest, entries)
     prizes = {int(p["rank"]): float(p["amount"]) for p in (contest.get("prize_breakdown") or [])}
+    settlement = await get_settlement_settings()
+    tax_percent = settlement["tax_percent"]
 
     winners = []
     for row in board:
         amount = prizes.get(row["rank"], 0)
+        gross, tax, net = split_prize(amount, tax_percent)
         row["prize"] = amount
+        row["tax_percent"] = tax_percent
+        row["tax_amount"] = tax
+        row["net_prize"] = net
         if amount <= 0 or body.dry_run:
             continue
         e = await db.entries.find_one({"id": row["entry_id"]})
@@ -2060,24 +2115,28 @@ async def admin_settle_contest(contest_id: str, body: SettleBody, admin=Depends(
             continue
         await db.entries.update_one(
             {"id": row["entry_id"]},
-            {"$set": {"status": "won", "winner_prize": amount, "won_at": now_iso(),
+            {"$set": {"status": "won", "winner_prize": net, "prize_gross": gross,
+                      "tax_percent": tax_percent, "tax_amount": tax, "won_at": now_iso(),
                       "fantasy_rank": row["rank"], "fantasy_points": row["points"]}},
         )
-        await db.users.update_one({"id": row["user_id"]}, {"$inc": {"wallet_balance": amount}})
+        await db.users.update_one({"id": row["user_id"]}, {"$inc": {"wallet_balance": net}})
         await db.wallet_logs.insert_one({
-            "id": str(uuid.uuid4()), "user_id": row["user_id"], "amount": amount,
-            "note": f"Fantasy prize · rank {row['rank']} · {contest.get('title')}",
+            "id": str(uuid.uuid4()), "user_id": row["user_id"], "amount": net, "kind": "cash",
+            "note": (f"Fantasy prize · rank {row['rank']} · {contest.get('title')}"
+                     + (f" (after {tax_percent:g}% tax {inr(tax)})" if tax else "")),
             "by": "system", "created_at": now_iso(),
         })
         await push_notification(
             row["user_id"], "win", f"You ranked #{row['rank']}! 🏆",
             f"{row['team_name'] or 'Your team'} scored {row['points']} points in {contest.get('title')}. "
-            f"{inr(amount)} has been credited to your wallet.",
+            + (f"{inr(gross)} prize minus {inr(tax)} tax — {inr(net)} credited to your wallet." if tax
+               else f"{inr(net)} has been credited to your wallet."),
             {"contest_id": contest_id, "entry_id": row["entry_id"], "rank": row["rank"],
-             "points": row["points"], "prize": amount},
+             "points": row["points"], "prize": net, "prize_gross": gross, "tax_amount": tax},
         )
         winners.append({"entry_id": row["entry_id"], "rank": row["rank"], "user_name": row["user_name"],
-                        "team_name": row["team_name"], "points": row["points"], "prize": amount})
+                        "team_name": row["team_name"], "points": row["points"], "prize": net,
+                        "prize_gross": gross, "tax_amount": tax, "tax_percent": tax_percent})
 
     if body.dry_run:
         return {"ok": True, "dry_run": True, "leaderboard": board, "winners": winners}
@@ -4360,6 +4419,389 @@ async def admin_ticket_reply(ticket_id: str, body: TicketReplyBody, admin=Depend
                                    "status": body.status}}
 
 
+# ---------- Ops: rate limiting, settlement tax, bonus wallet, automations, OTP ----------
+#
+# Everything here is deliberately conservative for a real-money app: limits default to
+# OFF/0 until the operator switches them on, and nothing moves money without an
+# explicit admin action or an existing user-initiated request.
+
+RATE_RULES = {
+    "auth": (10, 300),        # failed login / signup attempts per identity
+    "otp_request": (5, 600),  # codes per mobile
+    "otp_verify": (10, 600),  # guesses per mobile
+    "join": (30, 600),        # contest joins per user
+    "withdraw": (10, 600),    # withdrawal requests per user
+    "topup": (12, 600),       # top-up orders per user
+    "ticket": (6, 600),       # support tickets per user
+}
+_rate_hits: dict = {}
+
+
+def client_ip(request: Optional[Request]) -> str:
+    if request is None:
+        return "unknown"
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit_check(scope: str, key: str) -> None:
+    """Raise 429 when this identity already has too many recorded attempts.
+
+    Fixed-window and in-memory: single-process only — good enough for one backend
+    instance, and it fails open (never locks anyone out) across a restart, which is
+    the right trade for a login screen."""
+    limit, window = RATE_RULES.get(scope, (30, 60))
+    ident = f"{scope}:{key}"
+    now = time.monotonic()
+    hits = [t for t in _rate_hits.get(ident, []) if now - t < window]
+    _rate_hits[ident] = hits
+    if len(hits) >= limit:
+        retry = int(window - (now - hits[0])) + 1
+        raise HTTPException(
+            status_code=429,
+            detail="Too many attempts from here. Please wait a moment and try again.",
+            headers={"Retry-After": str(retry)},
+        )
+
+
+def rate_limit_hit(scope: str, key: str) -> None:
+    """Record one attempt (call this only for the attempts worth counting)."""
+    _, window = RATE_RULES.get(scope, (30, 60))
+    ident = f"{scope}:{key}"
+    now = time.monotonic()
+    _rate_hits[ident] = [t for t in _rate_hits.get(ident, []) if now - t < window] + [now]
+
+
+def rate_limit_clear(scope: str, key: str) -> None:
+    _rate_hits.pop(f"{scope}:{key}", None)
+
+
+def rate_limit(scope: str, key: str) -> None:
+    """Check + record in one call — for endpoints where every call costs something
+    (sending an SMS, creating an order)."""
+    rate_limit_check(scope, key)
+    rate_limit_hit(scope, key)
+
+
+# --- Settlement tax (TDS-style columns on every prize). 0 = disabled until the
+#     operator confirms the rate and section with their CA. ---
+TAX_MAX_PERCENT = float(os.environ.get("TAX_MAX_PERCENT", "30"))
+
+
+async def get_settlement_settings() -> dict:
+    s = await db.settings.find_one({"key": "settlement"}, {"_id": 0}) or {}
+    try:
+        pct = float(s.get("tax_percent") or 0)
+    except (TypeError, ValueError):
+        pct = 0.0
+    return {
+        "tax_percent": round(min(max(pct, 0.0), TAX_MAX_PERCENT), 2),
+        "tax_section": (s.get("tax_section") or "").strip(),
+        "bonus_join_enabled": bool(s.get("bonus_join_enabled", True)),
+        "auto_close": bool(s.get("auto_close", True)),
+        "auto_settle": bool(s.get("auto_settle", False)),
+        "settle_grace_minutes": int(s.get("settle_grace_minutes") or 30),
+        "updated_at": s.get("updated_at"),
+    }
+
+
+def split_prize(amount, tax_percent: float) -> tuple:
+    """(gross, tax, net) for one prize row, rounded to paise."""
+    gross = round(float(amount or 0), 2)
+    pct = float(tax_percent or 0)
+    tax = round(gross * pct / 100.0, 2) if pct > 0 else 0.0
+    return gross, tax, round(gross - tax, 2)
+
+
+class SettlementBody(BaseModel):
+    tax_percent: float = Field(0, ge=0, le=100)
+    tax_section: Optional[str] = None
+    bonus_join_enabled: Optional[bool] = None
+    auto_close: Optional[bool] = None
+    auto_settle: Optional[bool] = None
+    settle_grace_minutes: Optional[int] = Field(None, ge=0, le=10080)
+
+
+async def _set_settlement(updates: dict) -> dict:
+    updates = {k: v for k, v in updates.items() if v is not None}
+    updates["key"] = "settlement"
+    updates["updated_at"] = now_iso()
+    await db.settings.update_one({"key": "settlement"}, {"$set": updates}, upsert=True)
+    return await get_settlement_settings()
+
+
+@api_router.get("/admin/settlement")
+async def admin_get_settlement(admin=Depends(require_admin)):
+    return await get_settlement_settings()
+
+
+@api_router.put("/admin/settlement")
+async def admin_put_settlement(body: SettlementBody, admin=Depends(require_admin)):
+    if body.tax_percent > TAX_MAX_PERCENT:
+        raise HTTPException(status_code=400, detail=f"Tax rate cannot exceed {TAX_MAX_PERCENT:g}%")
+    data = body.model_dump()
+    data["tax_section"] = (data.get("tax_section") or "").strip()[:40]
+    out = await _set_settlement(data)
+    return out
+
+
+# --- Bonus wallet: promo money that can buy entry fees but can never be withdrawn ---
+async def credit_bonus(user_id: str, amount: float, note: str, by: str) -> dict:
+    amount = round(float(amount), 2)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Bonus amount must be positive")
+    await db.users.update_one({"id": user_id}, {"$inc": {"bonus_balance": amount}})
+    log = {
+        "id": str(uuid.uuid4()), "user_id": user_id, "amount": amount,
+        "note": note, "by": by, "kind": "bonus", "created_at": now_iso(),
+    }
+    await db.wallet_logs.insert_one(log)
+    log.pop("_id", None)
+    return log
+
+
+class BonusBody(BaseModel):
+    amount: float = Field(..., gt=0, le=1000000)
+    note: Optional[str] = None
+
+
+@api_router.post("/admin/users/{user_id}/bonus")
+async def admin_grant_bonus(user_id: str, body: BonusBody, admin=Depends(require_admin)):
+    u = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if u.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot grant bonus to an admin")
+    log = await credit_bonus(user_id, body.amount, (body.note or "Bonus credit from PitchPlay").strip()[:160], "admin")
+    await push_notification(
+        user_id, "wallet", f"{inr(body.amount)} bonus added 🎁",
+        f"{inr(body.amount)} bonus cash is in your account. Use it on entry fees — it is not withdrawable.",
+        {"bonus": body.amount},
+    )
+    return {"ok": True, "bonus_balance": round(float(u.get("bonus_balance") or 0) + body.amount, 2), "log": log}
+
+
+# --- Phone OTP: pluggable provider, mock by default so the flow is testable ---
+OTP_TTL_SECONDS = int(os.environ.get("OTP_TTL_SECONDS", "300"))
+OTP_VERIFY_WINDOW = int(os.environ.get("OTP_VERIFY_WINDOW", "600"))  # how long a verified mobile stays usable
+OTP_PROVIDER = (os.environ.get("OTP_PROVIDER") or "mock").strip().lower()
+MSG91_AUTH_KEY = os.environ.get("MSG91_AUTH_KEY", "").strip()
+MSG91_TEMPLATE_ID = os.environ.get("MSG91_TEMPLATE_ID", "").strip()
+
+
+async def deliver_otp(mobile: str, code: str) -> str:
+    """Send the OTP. Returns the channel name; raises 502 if a real provider is
+    configured but not usable, so we never silently pretend a code was sent."""
+    if OTP_PROVIDER == "mock":
+        logger.info("OTP(mock) for %s: %s", mobile[-4:], code)
+        return "mock"
+    if OTP_PROVIDER == "msg91":
+        if not (MSG91_AUTH_KEY and MSG91_TEMPLATE_ID):
+            raise HTTPException(status_code=502, detail="OTP provider is not configured. Ask the admin to set MSG91_AUTH_KEY and MSG91_TEMPLATE_ID.")
+        try:
+            r = requests.post(
+                f"https://api.msg91.com/api/v5/flow/?template_id={MSG91_TEMPLATE_ID}&mobile_no={mobile}&auth={MSG91_AUTH_KEY}",
+                json={"mobile_no": mobile, "template_id": MSG91_TEMPLATE_ID,
+                      "variables": {"otp": code}, "sender": "TestR4", "country": "91"},
+                timeout=15,
+            )
+        except requests.RequestException:
+            raise HTTPException(status_code=502, detail="Could not reach the SMS provider. Try again in a minute.")
+        if r.status_code >= 400:
+            logger.error("msg91 OTP failed: %s %s", r.status_code, r.text[:300])
+            raise HTTPException(status_code=502, detail="The SMS provider rejected the request. Try again shortly.")
+        return "msg91"
+    raise HTTPException(status_code=500, detail=f"Unknown OTP provider '{OTP_PROVIDER}'")
+
+
+class OtpRequestBody(BaseModel):
+    mobile: str
+
+
+class OtpVerifyBody(BaseModel):
+    mobile: str
+    code: str
+
+
+async def _issue_otp(mobile: str) -> tuple:
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    await db.otps.update_one(
+        {"mobile": mobile},
+        {"$set": {"code_hash": hash_password(code), "mobile": mobile, "tries": 0, "verified": False,
+                  "created_at": now_iso(), "expires_at": _iso_after(OTP_TTL_SECONDS)}},
+        upsert=True,
+    )
+    return code
+
+
+def _iso_after(seconds: int) -> str:
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+
+
+@api_router.post("/auth/otp/request")
+async def otp_request(body: OtpRequestBody, request: Request):
+    mobile = re.sub(r"\D", "", body.mobile or "")[-10:]
+    if len(mobile) != 10:
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number")
+    rate_limit("otp_request", mobile)
+    rate_limit("otp_request", client_ip(request))
+    code = await _issue_otp(mobile)
+    channel = await deliver_otp(mobile, code)
+    out = {"ok": True, "mobile": mobile, "channel": channel, "expires_in": OTP_TTL_SECONDS,
+           "registered": bool(await db.users.find_one({"mobile": mobile}, {"_id": 0}))}
+    if channel == "mock":
+        # Local/demo only: the code is shown so the flow can be exercised without an SMS gateway.
+        out["dev_code"] = code
+    return out
+
+
+@api_router.post("/auth/otp/verify")
+async def otp_verify(body: OtpVerifyBody, request: Request):
+    mobile = re.sub(r"\D", "", body.mobile or "")[-10:]
+    code = (body.code or "").strip()
+    vkey = f"otp_verify:{mobile}"
+    rate_limit_check("otp_verify", vkey)
+    rec = await db.otps.find_one({"mobile": mobile})
+    if not rec:
+        raise HTTPException(status_code=400, detail="Request a code first")
+    if datetime.fromisoformat(rec["expires_at"]) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="That code has expired. Request a new one.")
+    if int(rec.get("tries") or 0) >= 5:
+        raise HTTPException(status_code=429, detail="Too many wrong attempts. Request a fresh code.")
+    if not verify_password(code, rec["code_hash"]):
+        rate_limit_hit("otp_verify", vkey)
+        await db.otps.update_one({"mobile": mobile}, {"$inc": {"tries": 1}})
+        raise HTTPException(status_code=401, detail="Incorrect code")
+    rate_limit_clear("otp_verify", vkey)
+    # Keep a short-lived "verified" marker so /auth/otp/signup can trust the mobile.
+    await db.otps.update_one(
+        {"mobile": mobile},
+        {"$set": {"code_hash": "", "verified": True, "tries": 0, "verified_at": now_iso(),
+                  "expires_at": _iso_after(OTP_VERIFY_WINDOW)}},
+    )
+    user = await db.users.find_one({"mobile": mobile}, {"_id": 0})
+    if not user:
+        return {"ok": True, "verified": True, "needs_signup": True, "mobile": mobile}
+    if user.get("blocked"):
+        raise HTTPException(status_code=403, detail="Your account is blocked. Contact admin.")
+    token = create_token(user["id"], user["role"])
+    return {"ok": True, "verified": True, "token": token, "user": sanitize_user(user, hide_mobile=False)}
+
+
+class OtpSignupBody(BaseModel):
+    mobile: str
+    name: str
+    password: str = Field(..., min_length=4, max_length=72)
+
+
+@api_router.post("/auth/otp/signup")
+async def otp_signup(body: OtpSignupBody, request: Request):
+    """Create the account after the mobile has been OTP-verified."""
+    mobile = re.sub(r"\D", "", body.mobile or "")[-10:]
+    skey = f"otpsignup:{mobile}:{client_ip(request)}"
+    rate_limit_check("auth", skey)
+    if len(mobile) != 10:
+        raise HTTPException(status_code=400, detail="Enter a valid 10-digit mobile number")
+    rec = await db.otps.find_one({"mobile": mobile})
+    if not rec or not rec.get("verified"):
+        rate_limit_hit("auth", skey)
+        raise HTTPException(status_code=400, detail="Verify the code sent to your mobile first")
+    if datetime.fromisoformat(rec["expires_at"]) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Your verification has expired. Verify again.")
+    if await db.users.find_one({"mobile": mobile}):
+        rate_limit_hit("auth", skey)
+        raise HTTPException(status_code=400, detail="Mobile already registered")
+    await db.otps.delete_one({"mobile": mobile})
+    user_id = str(uuid.uuid4())
+    doc = {
+        "id": user_id, "name": body.name.strip()[:60], "mobile": mobile,
+        "password_hash": hash_password(body.password), "role": "user",
+        "wallet_balance": 0.0, "bonus_balance": 0.0, "created_at": now_iso(),
+    }
+    await db.users.insert_one(doc)
+    doc.pop("_id", None)
+    return {"token": create_token(user_id, "user"), "user": sanitize_user(doc, hide_mobile=False)}
+
+
+# --- Automations: close entries at the scheduled start, settle after the match ---
+async def auto_close_due_contests() -> int:
+    s = await get_settlement_settings()
+    if not s["auto_close"]:
+        return 0
+    now = datetime.now(timezone.utc)
+    closed = 0
+    due = await db.contests.find({"status": "open", "auto_close_at_start": True}, {"_id": 0}).to_list(500)
+    for c in due:
+        start = c.get("match_time") or (await db.matches.find_one({"id": c.get("match_id")}, {"_id": 0, "start_time": 1}) or {}).get("start_time")
+        if not start:
+            continue
+        try:
+            if datetime.fromisoformat(str(start).replace("Z", "+00:00")) > now:
+                continue
+        except ValueError:
+            continue
+        await db.contests.update_one({"id": c["id"]}, {"$set": {"status": "closed", "closed_by": "system", "closed_at": now_iso()}})
+        closed += 1
+        pending = await db.entries.find({"contest_id": c["id"], "status": "pending"}, {"_id": 0}).to_list(2000)
+        for e in pending:
+            await push_notification(e["user_id"], "entry", f"Entries closed · {c.get('title')}",
+                                    "Your payment is still being checked — the admin will confirm your slot.",
+                                    {"contest_id": c["id"]})
+    return closed
+
+
+async def auto_settle_due_contests() -> int:
+    s = await get_settlement_settings()
+    if not s["auto_settle"]:
+        return 0
+    admin = await db.users.find_one({"mobile": ADMIN_MOBILE}, {"_id": 0})
+    if not admin:
+        return 0
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=s["settle_grace_minutes"])).isoformat()
+    settled = 0
+    done = await db.matches.find({"status": "completed", "scorecard_at": {"$lte": cutoff}}, {"_id": 0}).to_list(200)
+    for m in done:
+        contests = await db.contests.find({"kind": "fantasy", "match_id": m["id"],
+                                           "status": {"$in": ["open", "closed"]}, "settled_at": None}, {"_id": 0}).to_list(200)
+        for c in contests:
+            try:
+                await admin_settle_contest(c["id"], SettleBody(), admin)
+                settled += 1
+                logger.info("Auto-settled contest %s", c["id"])
+            except HTTPException as e:
+                logger.warning("Auto-settle skipped %s: %s", c["id"], e.detail)
+            except Exception:
+                logger.exception("Auto-settle failed for %s", c["id"])
+    return settled
+
+
+_OPS_LOOP_TASK = None
+
+
+@api_router.post("/admin/ops/run")
+async def admin_run_ops(admin=Depends(require_admin)):
+    """Run the entry-closing / auto-settle sweep now instead of waiting for the loop."""
+    return {"closed": await auto_close_due_contests(), "settled": await auto_settle_due_contests()}
+
+
+async def _ops_loop():
+    while True:
+        try:
+            await asyncio.sleep(60)
+            n = await auto_close_due_contests()
+            if n:
+                logger.info("Auto-closed %d contest(s)", n)
+            n = await auto_settle_due_contests()
+            if n:
+                logger.info("Auto-settled %d contest(s)", n)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Ops loop iteration failed")
+
+
 # ---------- Startup ----------
 @app.on_event("startup")
 async def startup():
@@ -4384,10 +4826,18 @@ async def startup():
         logger.info("Storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
+    global _OPS_LOOP_TASK
+    if _OPS_LOOP_TASK is None:
+        _OPS_LOOP_TASK = asyncio.create_task(_ops_loop())
+        logger.info("Ops loop started (entry closing + optional auto-settle)")
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    global _OPS_LOOP_TASK
+    if _OPS_LOOP_TASK:
+        _OPS_LOOP_TASK.cancel()
+        _OPS_LOOP_TASK = None
     client.close()
 
 

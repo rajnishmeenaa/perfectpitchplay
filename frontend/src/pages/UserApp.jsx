@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, FirstAid, CheckCircle } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, FirstAid, CheckCircle, Coins } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
@@ -289,6 +289,7 @@ export default function UserApp() {
             <FantasyApp
               config={config}
               walletBalance={user?.wallet_balance || 0}
+              bonusBalance={user?.bonus_balance || 0}
               focusMatchId={focusMatch}
               entries={entries}
               onJoinFantasy={(contest, team) => { setJoinTeam(team || null); setJoinContest(contest); }}
@@ -353,6 +354,13 @@ export default function UserApp() {
                 <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2" data-testid="wallet-balance">
                   {money(user?.wallet_balance)}
                 </div>
+                {Number(user?.bonus_balance || 0) > 0 && (
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-gold/15 border border-gold/30 px-3 py-1.5" data-testid="bonus-chip">
+                    <Coins size={14} weight="fill" className="text-gold" />
+                    <span className="text-xs font-extrabold text-gold tabular">{money(user.bonus_balance)} bonus</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-gold/70">entry fees only</span>
+                  </div>
+                )}
                 {config.razorpay_enabled && (
                   <Button
                     onClick={() => setTopUpOpen(true)}
@@ -423,7 +431,7 @@ export default function UserApp() {
         </Tabs>
       </main>
 
-      <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} onTopUp={() => setTopUpOpen(true)} />
+      <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} bonusBalance={user?.bonus_balance || 0} onTopUp={() => setTopUpOpen(true)} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} config={config} />
       <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} />
       {legal && (mustAccept || termsOpen) && (
@@ -593,7 +601,7 @@ function ContestCard({ contest, onJoin, onFantasy }) {
   );
 }
 
-function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBalance = 0, onTopUp }) {
+function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBalance = 0, bonusBalance = 0, onTopUp }) {
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -624,7 +632,8 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
   }
 
   const fee = Number(contest.entry_fee || 0);
-  const canWallet = walletBalance >= fee && fee > 0;
+  const spendable = Number(walletBalance || 0) + Number(bonusBalance || 0);
+  const canWallet = spendable >= fee && fee > 0;
 
   const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "Admin")}&am=${contest.entry_fee}&cu=INR&tn=${encodeURIComponent(contest.title)}`;
   const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
@@ -703,8 +712,13 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
 
         <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex items-center justify-between gap-3" data-testid="wallet-pay-box">
           <div className="min-w-0">
-            <div className="text-xs font-bold uppercase tracking-widest text-emerald-800">Wallet balance</div>
-            <div className="font-heading text-xl font-extrabold text-emerald-900 tabular" data-testid="wallet-pay-balance">{money(walletBalance)}</div>
+            <div className="text-xs font-bold uppercase tracking-widest text-emerald-800">Available to pay</div>
+            <div className="font-heading text-xl font-extrabold text-emerald-900 tabular" data-testid="wallet-pay-balance">{money(spendable)}</div>
+            {Number(bonusBalance || 0) > 0 && (
+              <div className="text-[11px] font-bold text-gold mt-0.5" data-testid="wallet-pay-bonus">
+                includes {money(bonusBalance)} bonus · applied first
+              </div>
+            )}
             {!canWallet && (
               <div className="text-xs text-amber-700 mt-0.5" data-testid="wallet-insufficient">
                 Insufficient for this entry ({money(fee)})
@@ -1204,7 +1218,14 @@ function WalletHistory({ items }) {
           {items.map((t) => (
             <div key={t.id} className="px-5 py-3 flex items-center justify-between" data-testid={`wallet-tx-${t.id}`}>
               <div>
-                <div className="text-sm font-semibold text-zinc-900">{t.note}</div>
+                <div className="text-sm font-semibold text-zinc-900 flex items-center gap-2">
+                  {t.note}
+                  {t.kind === "bonus" && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 border border-gold/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-gold" data-testid={`wallet-kind-${t.id}`}>
+                      <Coins size={10} weight="fill" /> bonus
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-zinc-500 uppercase tracking-wider">{t.type} · {new Date(t.created_at).toLocaleString()}</div>
               </div>
               <div className={`font-heading font-extrabold tabular ${color[t.type]}`}>{t.amount > 0 ? "+" : "−"}{money(Math.abs(t.amount))}</div>

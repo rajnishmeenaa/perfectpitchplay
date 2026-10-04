@@ -6,6 +6,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { toast } from "sonner";
 import { ArrowRight, ShieldCheck, Lightning, Trophy, GoogleLogo, NumberCircleOne, NumberCircleTwo, NumberCircleThree, Sparkle } from "@phosphor-icons/react";
+import OtpAuth from "../components/otpAuth";
 
 const HERO = process.env.PUBLIC_URL + "/brand/hero-stadium.jpg";
 const LOGO = process.env.PUBLIC_URL + "/brand/logo-gold.png";
@@ -17,9 +18,10 @@ const STEPS = [
 ];
 
 export default function Landing() {
-  const { user, login, signup } = useAuth();
+  const { user, login, signup, loginWithToken } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState("login");
+  const [method, setMethod] = useState("password");
   const [form, setForm] = useState({ name: "", mobile: "", password: "" });
   const [busy, setBusy] = useState(false);
 
@@ -28,6 +30,12 @@ export default function Landing() {
   useEffect(() => {
     if (user) navigate(user.role === "admin" ? "/admin" : "/app", { replace: true });
   }, [user, navigate]);
+
+  const signInWithToken = async (token) => {
+    const u = await loginWithToken(token);
+    navigate(u.role === "admin" ? "/admin" : "/app", { replace: true });
+    return u;
+  };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -149,8 +157,27 @@ export default function Landing() {
               >
                 Sign up
               </button>
+              <div className="ml-auto flex items-center rounded-full border border-zinc-200 p-0.5" data-testid="auth-method-switch">
+                <button
+                  onClick={() => setMethod("password")}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "password" ? "bg-night-card text-gold" : "text-zinc-500"}`}
+                  data-testid="method-password"
+                >
+                  Password
+                </button>
+                <button
+                  onClick={() => setMethod("otp")}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "otp" ? "bg-night-card text-gold" : "text-zinc-500"}`}
+                  data-testid="method-otp"
+                >
+                  OTP
+                </button>
+              </div>
             </div>
 
+            {method === "otp" ? (
+              <OtpAuth onSignedIn={signInWithToken} />
+            ) : (
             <form className="mt-6 space-y-4" onSubmit={submit}>
               {mode === "signup" && (
                 <div>
@@ -206,6 +233,7 @@ export default function Landing() {
                 Only your mobile is stored. Visible only to the admin.
               </p>
             </form>
+            )}
 
             <div className="mt-5 flex items-center gap-3">
               <div className="h-px flex-1 bg-zinc-200" />

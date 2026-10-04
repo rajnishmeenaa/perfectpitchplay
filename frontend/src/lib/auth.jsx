@@ -45,6 +45,14 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
+  // OTP flows hand back a ready token — adopt it and pull the profile.
+  const loginWithToken = async (token) => {
+    setToken(token);
+    const { data } = await api.get("/auth/me");
+    setUser(data);
+    return data;
+  };
+
   const setMobile = async (mobile) => {
     const { data } = await api.post("/auth/set-mobile", { mobile });
     setUser((u) => (u ? { ...u, mobile: data.mobile, needs_mobile: false } : u));
@@ -64,7 +72,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogleSession, setMobile, logout, refresh, setUser }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, loginWithGoogleSession, loginWithToken, setMobile, logout, refresh, setUser }}>
       {children}
     </AuthContext.Provider>
   );
