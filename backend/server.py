@@ -2464,6 +2464,342 @@ async def delete_fantasy_team(team_id: str, user=Depends(get_current_user)):
     return {"ok": True}
 
 
+# ---------- Playing XI news, alerts and one-for-one swaps ----------
+#
+# The XI drop is the highest-stress minute of a fantasy day: half the entrants
+# have a dead pick and the clock is running out. So publishing does three things
+# at once — records who is actually playing, tells the affected players, and
+# offers a replacement that already satisfies the credit and role rules, which
+# turns a five-minute rebuild into one tap.
+
+def xi_status(player: dict, announced: bool) -> str:
+    """Effective news state. Nothing is 'confirmed' before an XI is published."""
+    status = (player or {}).get("status")
+    if status in XI_STATUSES:
+        return status
+    if not announced:
+        return "projected"
+    return "confirmed" if player.get("playing", True) else "dropped"
+
+
+def _brief(player: dict, status: str = None) -> dict:
+    return {
+        "id": player.get("id"), "name": player.get("name"), "team": player.get("team"),
+        "role": player.get("role"), "credits": player.get("credits"),
+        "projection": player.get("projection", 0), "status": status or player.get("status", "projected"),
+        "note": player.get("status_note") or "", "status_at": player.get("status_at"),
+    }
+
+
+async def notify_xi_changes(match: dict, changed: list) -> int:
+    """One notification per player whose saved XI is affected by the news."""
+    out_ids = {c["player_id"] for c in changed if c["to"] in XI_OUT}
+    if not out_ids:
+        return 0
+    teams = await db.fantasy_teams.find({"match_id": match["id"]}, {"_id": 0}).to_list(20000)
+    hit_by_user: dict = {}
+    for t in teams:
+        hit = [pid for pid in t.get("player_ids", []) if pid in out_ids]
+        if not hit:
+            continue
+        acc = hit_by_user.setdefault(t["user_id"], {"teams": 0, "players": []})
+        acc["teams"] += 1
+        acc["players"].extend(hit)
+    names = {c["player_id"]: c["name"] for c in changed}
+    reasons = {c["player_id"]: c["to"] for c in changed}
+    label = f"{match.get('team_a_short')} vs {match.get('team_b_short')}"
+    sent = 0
+    for uid, info in hit_by_user.items():
+        uniq = list(dict.fromkeys(info["players"]))
+        who = ", ".join(names.get(pid, "A pick") for pid in uniq[:2])
+        more = f" +{len(uniq) - 2} more" if len(uniq) > 2 else ""
+        why = reasons.get(uniq[0], "out")
+        body = (f"{who}{more} is not in the announced XI for {label} ({why}). "
+                f"Open My teams to swap a replacement before the first ball.")
+        await push_notification(uid, "xi", "Playing XI is out — check your team", body,
+                                {"match_id": match["id"], "alert": "xi"})
+        sent += 1
+    return sent
+
+
+class XiPublishBody(BaseModel):
+    xis: dict = Field(default_factory=dict)  # {"IND": [11 player ids], ...}
+    notes: dict = Field(default_factory=dict)      # player_id -> short reason
+    source: str = Field(default="manual", max_length=30)
+    notify: bool = True
+
+
+@api_router.put("/admin/matches/{match_id}/xi")
+async def admin_publish_xi(match_id: str, body: XiPublishBody, admin=Depends(require_admin)):
+    match = await get_match_or_404(match_id)
+    if match_locked(match):
+        raise HTTPException(status_code=400, detail="Match has started — the XI can no longer be published")
+    if not body.xis:
+        raise HTTPException(status_code=400, detail="Send at least one playing XI")
+    players = await get_match_players(match_id)
+    by_id = {p["id"]: p for p in players}
+    codes = {match["team_a_short"]: [], match["team_b_short"]: []}
+    for code, ids in body.xis.items():
+        key = (code or "").strip().upper()
+        if key not in codes:
+            raise HTTPException(status_code=400, detail=f"Unknown team {code}")
+        if len(ids) != TEAM_SIZE:
+            raise HTTPException(status_code=400, detail=f"{key}: an XI must name exactly {TEAM_SIZE} players")
+        if len(set(ids)) != TEAM_SIZE:
+            raise HTTPException(status_code=400, detail=f"{key}: the XI contains duplicate players")
+        foreign = [i for i in ids if i not in by_id or (by_id[i].get("team") or "").upper() != key]
+        if foreign:
+            raise HTTPException(status_code=400, detail=f"{key}: {len(foreign)} player(s) are not in that squad")
+        codes[key] = list(ids)
+
+    announced_before = bool(match.get("xi_announced"))
+    at = now_iso()
+    changed = []
+    for key, ids in codes.items():
+        if not ids:
+            continue  # this side has not been announced yet
+        picked = set(ids)
+        for p in players:
+            if (p.get("team") or "").upper() != key:
+                continue
+            new = "confirmed" if p["id"] in picked else "dropped"
+            old = xi_status(p, announced_before)
+            if old == new:
+                continue
+            changed.append({"player_id": p["id"], "name": p.get("name"), "team": key,
+                            "role": p.get("role"), "from": old, "to": new})
+            await db.players.update_one({"id": p["id"]}, {"$set": {
+                "status": new, "playing": new == "confirmed", "status_at": at,
+                "status_note": str((body.notes or {}).get(p["id"]) or "")[:120] if new in XI_OUT else "",
+            }})
+    xi_teams = {**(match.get("xi_teams") or {}), **{k: v for k, v in codes.items() if v}}
+    await db.matches.update_one({"id": match_id}, {"$set": {
+        "xi_announced": True, "xi_at": at, "xi_source": (body.source or "manual")[:30], "xi_teams": xi_teams}})
+    notified = await notify_xi_changes(match, changed) if body.notify else 0
+    await db.xi_updates.insert_one({
+        "id": str(uuid.uuid4()), "match_id": match_id, "at": at,
+        "by": admin.get("name") or "admin", "source": (body.source or "manual")[:30],
+        "teams": xi_teams, "changed": changed, "notified": notified,
+    })
+    return {"ok": True, "announced": True, "changed": len(changed), "players": changed, "notified": notified}
+
+
+@api_router.get("/matches/{match_id}/xi")
+async def match_xi_board(match_id: str, user=Depends(get_current_user)):
+    match = await get_match_or_404(match_id)
+    players = await get_match_players(match_id)
+    announced = bool(match.get("xi_announced"))
+    sides = {match["team_a_short"]: [], match["team_b_short"]: []}
+    for p in players:
+        code = (p.get("team") or "").upper()
+        if code in sides:
+            sides[code].append(p)
+    board = {}
+    for code, group in sides.items():
+        confirmed = [p for p in group if xi_status(p, announced) == "confirmed"]
+        out = [p for p in group if xi_status(p, announced) in XI_OUT]
+        rest = [p for p in group if xi_status(p, announced) == "projected"]
+        order = (lambda p: float(p.get("projection") or 0))
+        board[code] = {
+            "confirmed": sorted((_brief(p, "confirmed") for p in confirmed), key=order, reverse=True),
+            "out": sorted((_brief(p, xi_status(p, True)) for p in out), key=lambda p: p["name"] or ""),
+            "projected": sorted((_brief(p, "projected") for p in rest), key=order, reverse=True),
+        }
+    return {"announced": announced, "at": match.get("xi_at"), "source": match.get("xi_source"),
+            "teams": board, "locked": match_locked(match)}
+
+
+def _swap_candidates(players_by_id: dict, team: dict, out_player: dict) -> dict:
+    """Rule-legal replacements for one pick, best projection first."""
+    others = [pid for pid in team.get("player_ids", []) if pid != out_player["id"]]
+    base = [players_by_id[pid] for pid in others if pid in players_by_id]
+    used = round(sum(float(p.get("credits") or 0) for p in base), 2)
+    room = round(CREDIT_BUDGET - used, 2)
+    counts = {r: 0 for r in FANTASY_ROLES}
+    per_side: dict = {}
+    for p in base:
+        counts[p.get("role")] = counts.get(p.get("role"), 0) + 1
+        per_side[p.get("team")] = per_side.get(p.get("team"), 0) + 1
+    # Roles that would fall below their minimum once the out player is removed.
+    needed = {r for r, (lo, _hi) in ROLE_LIMITS.items() if counts.get(r, 0) < lo}
+    cands = []
+    for p in players_by_id.values():
+        if p["id"] in others or p["id"] == out_player["id"]:
+            continue
+        if xi_status(p, True) != "confirmed":
+            continue
+        role = p.get("role")
+        if needed and role not in needed:
+            continue
+        if counts.get(role, 0) >= ROLE_LIMITS.get(role, (0, 99))[1]:
+            continue
+        if per_side.get(p.get("team"), 0) >= MAX_PER_SIDE:
+            continue
+        if float(p.get("credits") or 0) > room + 1e-9:
+            continue
+        cands.append(p)
+    cands.sort(key=lambda p: (float(p.get("projection") or 0), float(p.get("credits") or 0)), reverse=True)
+    reason = None
+    if not cands:
+        if needed:
+            reason = f"No confirmed {', '.join(sorted(needed))} left in the announced XI within your credits"
+        else:
+            reason = "No confirmed replacement fits your credits and role limits"
+    return {"candidates": [_brief(p) for p in cands[:5]], "credits_room": room, "blocked_reason": reason}
+
+
+def _resolve_leadership(players_by_id: dict, new_ids: list, captain_id: str, vice_id: str, out_id: str) -> tuple:
+    """Keep the armband valid when the swapped pick carries it."""
+    if out_id not in (captain_id, vice_id):
+        return captain_id, vice_id, ""
+    proj = lambda pid: float((players_by_id.get(pid) or {}).get("projection") or 0)
+    pool = [pid for pid in new_ids if pid != out_id]
+    if not pool:
+        return captain_id, vice_id, ""
+    if out_id == captain_id:
+        captain = vice_id if vice_id and vice_id != out_id and vice_id in pool else max(pool, key=proj)
+        rest = [pid for pid in pool if pid != captain]
+        vice = max(rest, key=proj) if rest else captain
+        return captain, vice, "Vice-captain promoted to captain; the new pick took vice-captain"
+    captain = captain_id if captain_id in pool else max(pool, key=proj)
+    rest = [pid for pid in pool if pid != captain]
+    vice = max(rest, key=proj) if rest else captain
+    return captain, vice, "New vice-captain chosen on projection"
+
+
+class TeamSwapBody(BaseModel):
+    out_player_id: str
+    in_player_id: str
+    captain_id: Optional[str] = None
+    vice_captain_id: Optional[str] = None
+
+
+async def perform_team_swap(team: dict, out_id: str, in_id: str, actor: str) -> dict:
+    """Apply one swap, reusing the full squad rules. Raises 400 on any breach."""
+    match = await get_match_or_404(team["match_id"])
+    if match_locked(match):
+        raise HTTPException(status_code=400, detail="Match has started — teams are locked")
+    players = await get_match_players(match["id"])
+    by_id = {p["id"]: p for p in players}
+    ids = list(team.get("player_ids") or [])
+    if out_id not in ids:
+        raise HTTPException(status_code=400, detail="That player is not in this team")
+    if in_id not in by_id:
+        raise HTTPException(status_code=400, detail="Replacement is not in this match")
+    if in_id in ids:
+        raise HTTPException(status_code=400, detail="That player is already in your team")
+    if xi_status(by_id[in_id], bool(match.get("xi_announced"))) in XI_OUT:
+        raise HTTPException(status_code=400, detail=f"{by_id[in_id].get('name')} is not in the announced XI")
+    new_ids = [in_id if pid == out_id else pid for pid in ids]
+    captain, vice, note = _resolve_leadership(by_id, new_ids, team.get("captain_id"), team.get("vice_captain_id"), out_id)
+    summary = validate_team(by_id, new_ids, captain, vice)
+    swaps = list(team.get("swaps") or [])
+    swaps.append({"at": now_iso(), "out": out_id, "out_name": (by_id.get(out_id) or {}).get("name") or "?",
+                  "in": in_id, "in_name": by_id[in_id].get("name"), "by": actor[:40]})
+    await db.fantasy_teams.update_one({"id": team["id"]}, {"$set": {
+        "player_ids": new_ids, "captain_id": captain, "vice_captain_id": vice,
+        "credits_used": summary["credits_used"], "by_role": summary["by_role"],
+        "per_team": summary["per_team"], "swaps": swaps[-40:], "updated_at": now_iso()}})
+    fresh = await db.fantasy_teams.find_one({"id": team["id"]}, {"_id": 0})
+    contests = await db.entries.find({"team_id": team["id"], "status": {"$in": ["pending", "approved"]}},
+                                     {"_id": 0, "contest_id": 1}).to_list(200)
+    fresh["players"] = [by_id[pid] for pid in fresh["player_ids"] if pid in by_id]
+    return {"team": fresh, "contests_updated": len(contests), "leadership_note": note,
+            "out": _brief(by_id.get(out_id, {})), "in": _brief(by_id[in_id])}
+
+
+@api_router.get("/fantasy/teams/{team_id}/swap-options")
+async def team_swap_options(team_id: str, out_player_id: str, user=Depends(get_current_user)):
+    team = await db.fantasy_teams.find_one({"id": team_id, "user_id": user["id"]}, {"_id": 0})
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    players = await get_match_players(team["match_id"])
+    by_id = {p["id"]: p for p in players}
+    out_player = by_id.get(out_player_id)
+    if not out_player:
+        raise HTTPException(status_code=404, detail="Player not in this match")
+    return _swap_candidates(by_id, team, out_player)
+
+
+@api_router.post("/fantasy/teams/{team_id}/swap")
+async def fantasy_team_swap(team_id: str, body: TeamSwapBody, user=Depends(get_current_user)):
+    team = await db.fantasy_teams.find_one({"id": team_id, "user_id": user["id"]}, {"_id": 0})
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    result = await perform_team_swap(team, body.out_player_id, body.in_player_id, user.get("name") or "you")
+    return {"ok": True, **result}
+
+
+@api_router.get("/me/xi-alerts")
+async def my_xi_alerts(user=Depends(get_current_user)):
+    """Saved XIs that contain players the announced XI left out, with a fix."""
+    teams = await db.fantasy_teams.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    alerts = []
+    seen_match: dict = {}
+    for t in teams:
+        match = seen_match.get(t["match_id"])
+        if match is None:
+            match = await db.matches.find_one({"id": t["match_id"]}, {"_id": 0})
+            seen_match[t["match_id"]] = match
+        if not match or not match.get("xi_announced") or match_locked(match):
+            continue
+        players = await get_match_players(match["id"])
+        by_id = {p["id"]: p for p in players}
+        out = [by_id[pid] for pid in t.get("player_ids", []) if pid in by_id
+               and xi_status(by_id[pid], True) in XI_OUT]
+        if not out:
+            continue
+        entries = await db.entries.find({"team_id": t["id"], "status": {"$in": ["pending", "approved"]}},
+                                        {"_id": 0, "contest_id": 1, "contest_title": 1}).to_list(100)
+        fixes = []
+        for p in out:
+            sug = _swap_candidates(by_id, t, p)
+            fixes.append({"out": _brief(p), "candidates": sug["candidates"], "blocked_reason": sug["blocked_reason"]})
+        alerts.append({
+            "team_id": t["id"], "team_name": t.get("name"), "match_id": match["id"],
+            "match_label": f"{match.get('team_a_short')} vs {match.get('team_b_short')}",
+            "lock_at": match.get("start_time"), "captain_id": t.get("captain_id"),
+            "vice_captain_id": t.get("vice_captain_id"),
+            "contests": [{"id": e.get("contest_id"), "title": e.get("contest_title")} for e in entries][:6],
+            "fixes": fixes,
+        })
+    alerts.sort(key=lambda a: a["lock_at"] or "")
+    return {"count": len(alerts), "alerts": alerts}
+
+
+@api_router.post("/me/xi-alerts/fix-all")
+async def fix_all_xi_alerts(user=Depends(get_current_user)):
+    """Apply the best rule-legal replacement for every affected saved XI."""
+    data = await my_xi_alerts(user=user)
+    fixed, skipped = [], []
+    for alert in data["alerts"]:
+        for fix in alert["fixes"]:
+            # Re-read the team and re-rank on every step: an earlier swap changes
+            # which replacements are still legal.
+            team = await db.fantasy_teams.find_one({"id": alert["team_id"], "user_id": user["id"]}, {"_id": 0})
+            if not team:
+                break
+            out_id = fix["out"]["id"]
+            if out_id not in (team.get("player_ids") or []):
+                continue
+            players = await get_match_players(team["match_id"])
+            by_id = {p["id"]: p for p in players}
+            if out_id not in by_id:
+                continue
+            sug = _swap_candidates(by_id, team, by_id[out_id])
+            cand = (sug.get("candidates") or [None])[0]
+            if not cand:
+                skipped.append({"team": team.get("name"), "player": fix["out"]["name"],
+                                "reason": sug.get("blocked_reason") or "no replacement available"})
+                continue
+            try:
+                await perform_team_swap(team, out_id, cand["id"], "auto-fix")
+                fixed.append({"team": team.get("name"), "out": fix["out"]["name"], "in": cand.get("name")})
+            except HTTPException as e:
+                skipped.append({"team": team.get("name"), "player": fix["out"]["name"], "reason": str(e.detail)})
+    return {"ok": True, "fixed": len(fixed), "swaps": fixed, "skipped": skipped}
+
+
 @api_router.get("/fantasy/contests/{contest_id}/leaderboard")
 async def fantasy_leaderboard(contest_id: str, user=Depends(get_current_user)):
     contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})

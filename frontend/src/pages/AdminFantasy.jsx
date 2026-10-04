@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
-import { Flag, Plus, Trash, Trophy, ChartBar, Check, X, Users, Medal, ShieldCheck, Lock, Lightning, Broadcast, Sparkle } from "@phosphor-icons/react";
+import { Flag, Plus, Trash, Trophy, ChartBar, Check, X, Users, Medal, ShieldCheck, Lock, Lightning, Broadcast, Sparkle, ListChecks } from "@phosphor-icons/react";
+import { XiPublisher } from "../components/xiNews";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const ROLES = ["WK", "BAT", "AR", "BOWL"];
@@ -223,6 +224,9 @@ function MatchAdmin({ match, onMatchChanged }) {
           <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-contests">
             <Trophy size={15} weight="bold" className="mr-1.5" /> Contests
           </TabsTrigger>
+          <TabsTrigger value="xi" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-xi">
+            <ListChecks size={15} weight="bold" className="mr-1.5" /> Playing XI
+          </TabsTrigger>
           <TabsTrigger value="scorecard" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-scorecard">
             <ChartBar size={15} weight="bold" className="mr-1.5" /> Scorecard & results
           </TabsTrigger>
@@ -232,11 +236,37 @@ function MatchAdmin({ match, onMatchChanged }) {
         </TabsList>
         <TabsContent value="squad" className="mt-4"><SquadPanel key={match.id} match={match} /></TabsContent>
         <TabsContent value="contests" className="mt-4"><FantasyContestPanel key={match.id} match={match} /></TabsContent>
+        <TabsContent value="xi" className="mt-4"><XiPanel key={match.id} match={match} /></TabsContent>
         <TabsContent value="scorecard" className="mt-4"><ScorecardPanel key={match.id} match={match} onMatchChanged={onMatchChanged} /></TabsContent>
         <TabsContent value="live" className="mt-4"><LiveCenterPanel key={match.id} match={match} onMatchChanged={onMatchChanged} /></TabsContent>
       </Tabs>
     </div>
   );
+}
+
+function XiPanel({ match }) {
+  const [players, setPlayers] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api.get(`/matches/${match.id}`)
+      .then(({ data }) => alive && setPlayers(data.players || []))
+      .catch((e) => toast.error(e?.response?.data?.detail || "Could not load the squads"))
+      .finally(() => alive && setLoaded(true));
+    return () => { alive = false; };
+    // eslint-disable-next-line
+  }, [match.id]);
+
+  if (!loaded) return <div className="bg-white border border-zinc-200 rounded-lg p-8 text-center text-sm text-zinc-500">Loading squads…</div>;
+  if (players.length < 22) {
+    return (
+      <div className="bg-white border border-zinc-200 rounded-lg p-8 text-center text-sm text-zinc-500" data-testid="xi-needs-squad">
+        Both squads need at least 22 players before an XI can be named. Add them in the Squads tab ({players.length} now).
+      </div>
+    );
+  }
+  return <XiPublisher match={match} players={players} />;
 }
 
 function LiveCenterPanel({ match, onMatchChanged }) {

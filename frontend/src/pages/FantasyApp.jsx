@@ -5,9 +5,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
 import { isNative, notificationPermission, syncReminders } from "../lib/notifications";
+import { XiChip, XiBoard, XiAlerts } from "../components/xiNews";
 import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise, CaretUp, CaretDown, ChartLine, Star, Eye, WarningCircle, CheckCircle, ArrowsLeftRight } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+const XI_OUT = ["rested", "injured", "dropped"];
+const playerStatus = (p) => p?.status || (p?.playing === false ? "dropped" : "projected");
+const isOutOfXi = (p) => XI_OUT.includes(playerStatus(p));
 const ROLES = ["WK", "BAT", "AR", "BOWL"];
 const ROLE_LABEL = { WK: "Wicketkeeper", BAT: "Batter", AR: "All-rounder", BOWL: "Bowler" };
 const ROLE_SKIN = {
@@ -138,6 +142,8 @@ export default function FantasyApp({ config, walletBalance = 0, bonusBalance = 0
           <Info size={16} weight="bold" className="mr-1" /> Points system
         </Button>
       </div>
+
+      <XiAlerts onFixed={() => { loadDetail(matchId); onMoneyChanged?.(); }} />
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {matches.map((m) => (
@@ -678,8 +684,18 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
     }
   };
 
+  const outPicks = ids.filter((id) => isOutOfXi(players.find((p) => p.id === id)));
+
   return (
-    <div className="grid lg:grid-cols-3 gap-5">
+    <div className="space-y-4">
+      <XiBoard matchId={match.id} />
+      {outPicks.length > 0 && (
+        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-[13px] font-bold text-red-800" data-testid="xi-pick-warning">
+          <WarningCircle size={14} weight="fill" className="inline mr-1.5 -mt-0.5" />
+          {outPicks.length} of your picks {outPicks.length === 1 ? "is" : "are"} not in the announced XI — they score nothing but the +4 playing-XI bonus.
+        </div>
+      )}
+      <div className="grid lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 bg-white border border-zinc-200 rounded-lg" data-testid="squad-picker">
         <div className="p-4 border-b border-zinc-100 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Select players</span>
@@ -829,6 +845,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
         )}
 
         {infoId && <PlayerSheet playerId={infoId} onClose={() => setInfoId(null)} />}
+        </div>
       </div>
     </div>
   );
@@ -858,7 +875,10 @@ function PlayerRow({ player, picked, disabled, onToggle, onInfo }) {
           <Check size={12} weight="bold" />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-bold text-zinc-900 truncate">{player.name}{!player.playing && <span className="ml-1.5 text-[10px] font-bold text-red-600 uppercase">not playing</span>}</span>
+          <span className="block text-sm font-bold text-zinc-900 truncate">
+            {player.name}
+            <XiChip status={playerStatus(player)} note={player.status_note} testid={`xi-chip-${player.id}`} className="ml-1.5 align-middle" />
+          </span>
           <span className={`inline-block mt-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${ROLE_SKIN[player.role]}`}>{ROLE_LABEL[player.role]}</span>
         </span>
         {player.projection > 0 && <span className="text-[10px] font-bold text-violet-700 tabular shrink-0" data-testid={`player-proj-${player.id}`}>{player.projection} proj</span>}
