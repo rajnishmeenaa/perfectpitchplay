@@ -438,6 +438,8 @@ function EntriesPanel() {
         </Table>
       </div>
 
+      <TopupsPanel />
+
       <Dialog open={!!preview} onOpenChange={(v) => !v && setPreview(null)}>
         <DialogContent className="max-w-lg" data-testid="screenshot-preview">
           <DialogHeader><DialogTitle className="font-heading font-extrabold">Payment screenshot</DialogTitle></DialogHeader>
@@ -456,6 +458,91 @@ function EntriesPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * Wallet top-ups paid by UPI transfer. Nothing reaches a player's balance
+ * until the UTR here is matched against the bank statement, so a wrong claim
+ * cannot create spendable money.
+ */
+function TopupsPanel() {
+  const [items, setItems] = useState([]);
+  const [note, setNote] = useState({});
+  const load = () => api.get("/admin/topups").then((r) => setItems(r.data)).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const decide = async (t, action) => {
+    try {
+      await api.post(`/admin/topups/${t.id}/decision`, { action, note: note[t.id] || "" });
+      toast.success(action === "approve" ? `${money(t.amount)} credited to ${t.user_name}` : "Request rejected");
+      load();
+    } catch (err) { toast.error(err?.response?.data?.detail || "Failed"); }
+  };
+
+  const pending = items.filter((t) => t.status === "pending");
+  const total = pending.reduce((s, t) => s + Number(t.amount || 0), 0);
+
+  return (
+    <div className="mt-8" data-testid="topups-panel">
+      <h2 className="font-heading text-2xl font-extrabold tracking-tight text-zinc-950">Wallet top-ups by UPI</h2>
+      <p className="text-zinc-500 mt-1 text-sm" data-testid="topups-summary">
+        {pending.length ? `${pending.length} waiting · ${money(total)} to verify` : "Nothing waiting — every submitted UTR is settled."}
+      </p>
+
+      <div className="bg-white border border-zinc-200 rounded-lg mt-4 overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-zinc-50">
+              <TableHead className="font-bold text-zinc-700">User</TableHead>
+              <TableHead className="font-bold text-zinc-700">Amount / UTR</TableHead>
+              <TableHead className="font-bold text-zinc-700">Submitted</TableHead>
+              <TableHead className="font-bold text-zinc-700">Status</TableHead>
+              <TableHead className="font-bold text-zinc-700 text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.length === 0 ? (
+              <TableRow><TableCell colSpan={5} className="text-center py-10 text-zinc-500">No top-up requests</TableCell></TableRow>
+            ) : items.slice(0, 60).map((t) => (
+              <TableRow key={t.id} data-testid={`admin-topup-row-${t.id}`}>
+                <TableCell>
+                  <div className="font-bold text-zinc-950">{t.user_name}</div>
+                  <div className="text-xs text-zinc-500 tabular">{t.user_mobile}</div>
+                </TableCell>
+                <TableCell className="tabular">
+                  <div className="font-bold">{money(t.amount)}</div>
+                  <div className="text-xs text-zinc-500 select-all">UTR {t.utr}</div>
+                </TableCell>
+                <TableCell className="text-xs text-zinc-500 tabular">
+                  {new Date(t.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                </TableCell>
+                <TableCell><StatusBadge status={t.status} /></TableCell>
+                <TableCell className="text-right">
+                  {t.status === "pending" ? (
+                    <div className="flex items-center justify-end gap-2">
+                      <input
+                        value={note[t.id] || ""}
+                        onChange={(e) => setNote({ ...note, [t.id]: e.target.value })}
+                        placeholder="Note (optional)"
+                        className="w-32 text-xs rounded border border-zinc-200 px-2 py-1"
+                        data-testid={`topup-note-${t.id}`}
+                      />
+                      <Button size="sm" onClick={() => decide(t, "approve")} className="bg-emerald-600 hover:bg-emerald-700" data-testid={`topup-approve-${t.id}`}>
+                        <Check size={14} className="mr-1" /> Credit
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => decide(t, "reject")} data-testid={`topup-reject-${t.id}`}>Reject</Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-zinc-500">{t.decision_note || (t.status === "approved" ? "credited" : "—")}</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }

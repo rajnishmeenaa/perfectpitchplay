@@ -308,6 +308,12 @@ TEAM_SIZE = 11
 CREDIT_BUDGET = 100.0
 MAX_PER_SIDE = 7
 
+# Playing-XI news states. "projected" is the pre-announcement default, so a
+# squad that has not been confirmed yet never claims a pick is certain.
+XI_STATUSES = ("projected", "confirmed", "rested", "injured", "dropped")
+XI_IN = ("projected", "confirmed")
+XI_OUT = ("rested", "injured", "dropped")
+
 
 class MatchCreate(BaseModel):
     team_a_name: str = Field(min_length=1, max_length=60)
@@ -350,6 +356,8 @@ class PlayerUpdate(BaseModel):
     role: Optional[str] = None
     credits: Optional[float] = Field(default=None, gt=0, le=20)
     playing: Optional[bool] = None
+    status: Optional[str] = None  # projected | confirmed | rested | injured | dropped
+    note: Optional[str] = Field(default=None, max_length=120)
     projection: Optional[float] = Field(default=None, ge=0, le=500)
 
 
@@ -1205,6 +1213,117 @@ async def wallet_topup_verify(body: RzpVerifyBody, user=Depends(get_current_user
     return {"ok": True, "wallet_balance": (me or {}).get("wallet_balance", 0.0)}
 
 
+# ---------- Wallet top-up by UPI transfer (no gateway) ----------
+#
+# The gateway is not always available — a new account, a downtime, or a user who
+# simply prefers to send money to a UPI id. Those top-ups are held as requests
+# and only become balance once the organiser matches the UTR against the bank
+# statement, so a wrong claim can never mint spendable money.
+
+class ManualTopupBody(BaseModel):
+    amount: float = Field(gt=0, le=100000)
+    utr: str = Field(min_length=4, max_length=32)
+
+
+@api_router.post("/wallet/topup/manual")
+async def wallet_topup_manual(body: ManualTopupBody, user=Depends(get_current_user)):
+    rate_limit("topup", user["id"])
+    settings = await get_payment_settings()
+    if not settings.get("manual_upi_enabled", True):
+        raise HTTPException(status_code=400, detail="UPI transfers are paused right now. Please pay online.")
+    if not (settings.get("upi_id") or "").strip():
+        raise HTTPException(status_code=503, detail="No UPI id is set up for wallet top-ups yet")
+    await enforce_deposit_safety(user, float(body.amount))
+    utr = re.sub(r"\s+", "", body.utr).upper()[:32]
+    if not re.fullmatch(r"[0-9A-Z-]{4,32}", utr):
+        raise HTTPException(status_code=400, detail="Enter the transaction reference (UTR) exactly as your payment app shows it")
+    clash = await db.topup_requests.find_one({"utr": utr, "status": {"$in": ["pending", "approved"]}}, {"_id": 0})
+    if clash:
+        raise HTTPException(status_code=400, detail="That UTR has already been submitted")
+    amount = round(float(body.amount), 2)
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "user_name": user.get("name") or "",
+        "user_mobile": user.get("mobile") or "",
+        "amount": amount,
+        "utr": utr,
+        "status": "pending",
+        "created_at": now_iso(),
+        "decided_at": None,
+        "decision_note": "",
+        "credited_by": None,
+    }
+    await db.topup_requests.insert_one(doc)
+    doc.pop("_id", None)
+    await push_notification(
+        user["id"], "topup", f"{inr(amount)} sent for verification",
+        f"We'll credit your wallet as soon as UTR {utr} is confirmed by the organiser.",
+        {"topup_id": doc["id"], "amount": amount},
+    )
+    return {"ok": True, "status": "pending", "id": doc["id"], "amount": amount, "utr": utr}
+
+
+@api_router.get("/wallet/topups/mine")
+async def my_topup_requests(user=Depends(get_current_user)):
+    return await db.topup_requests.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api_router.get("/admin/topups")
+async def admin_topups(status: Optional[str] = None, admin=Depends(require_admin)):
+    q = {"status": status} if status else {}
+    return await db.topup_requests.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+
+class TopupDecisionBody(BaseModel):
+    action: str  # approve | reject
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+@api_router.post("/admin/topups/{request_id}/decision")
+async def decide_topup(request_id: str, body: TopupDecisionBody, admin=Depends(require_admin)):
+    r = await db.topup_requests.find_one({"id": request_id}, {"_id": 0})
+    if not r:
+        raise HTTPException(status_code=404, detail="Top-up request not found")
+    if r["status"] != "pending":
+        raise HTTPException(status_code=400, detail=f"Already {r['status']}")
+    action = (body.action or "").strip().lower()
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Action must be approve or reject")
+    note = (body.note or "").strip()[:200]
+
+    if action == "approve":
+        amount = round(float(r["amount"]), 2)
+        await db.users.update_one({"id": r["user_id"]}, {"$inc": {"wallet_balance": amount}})
+        await db.wallet_logs.insert_one({
+            "id": str(uuid.uuid4()), "user_id": r["user_id"], "amount": amount,
+            "note": f"Wallet top-up via UPI (UTR {r['utr']})", "by": "system", "created_at": now_iso(),
+        })
+        await db.topup_requests.update_one(
+            {"id": request_id},
+            {"$set": {"status": "approved", "decided_at": now_iso(), "decision_note": note, "credited_by": admin["id"]}},
+        )
+        await add_deposit(r["user_id"], amount)
+        await maybe_pay_referral_bonus(r["user_id"])
+        me = await db.users.find_one({"id": r["user_id"]}, {"_id": 0, "wallet_balance": 1})
+        await push_notification(
+            r["user_id"], "topup", f"{inr(amount)} added to your wallet",
+            f"Your UPI transfer (UTR {r['utr']}) is confirmed." + (f" {note}" if note else ""),
+            {"amount": amount, "wallet_balance": (me or {}).get("wallet_balance", 0.0)},
+        )
+    else:
+        await db.topup_requests.update_one(
+            {"id": request_id},
+            {"$set": {"status": "rejected", "decided_at": now_iso(), "decision_note": note}},
+        )
+        await push_notification(
+            r["user_id"], "topup", "Top-up could not be verified",
+            f"UTR {r['utr']} was not accepted." + (f" {note}" if note else " Check the reference and submit it again."),
+            {"topup_id": request_id, "amount": r["amount"]},
+        )
+    return {"ok": True, "status": "approved" if action == "approve" else "rejected"}
+
+
 PAYOUT_FINAL_OK = {"processed"}
 PAYOUT_FINAL_FAIL = {"reversed", "failed", "rejected", "cancelled"}
 
@@ -1932,6 +2051,9 @@ async def _insert_player(match: dict, body: PlayerCreate) -> dict:
         "credits": float(body.credits),
         "projection": float(body.projection or 0),
         "playing": True,
+        "status": "projected",
+        "status_note": "",
+        "status_at": None,
         "created_at": now_iso(),
     }
     await db.players.insert_one(doc)
@@ -1971,6 +2093,22 @@ async def admin_update_player(player_id: str, body: PlayerUpdate, admin=Depends(
         if role not in FANTASY_ROLES:
             raise HTTPException(status_code=400, detail="Role must be WK, BAT, AR or BOWL")
         updates["role"] = role
+    status = updates.pop("status", None)
+    note = updates.pop("note", None)
+    if status is not None:
+        status = str(status).strip().lower()
+        if status not in XI_STATUSES:
+            raise HTTPException(status_code=400, detail="Status must be projected, confirmed, rested, injured or dropped")
+        updates["status"] = status
+        updates["playing"] = status in XI_IN
+        updates["status_at"] = now_iso()
+    elif "playing" in updates:
+        # The old boolean toggle has to keep the new status column in step.
+        updates["status"] = "confirmed" if updates["playing"] else "dropped"
+        updates["playing"] = bool(updates["playing"])
+        updates["status_at"] = now_iso()
+    if note is not None:
+        updates["status_note"] = str(note).strip()[:120]
     await db.players.update_one({"id": player_id}, {"$set": updates})
     return await db.players.find_one({"id": player_id}, {"_id": 0})
 

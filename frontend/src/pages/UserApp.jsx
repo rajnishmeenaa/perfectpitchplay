@@ -160,10 +160,11 @@ export default function UserApp() {
   const [focusSection, setFocusSection] = useState(null);
   const [matches, setMatches] = useState([]);
   const [matchFilter, setMatchFilter] = useState(null);
+  const [topups, setTopups] = useState([]);
 
   const loadAll = async () => {
     try {
-      const [c, e, w, cfg, me, h, win, lg, st, sf, ms] = await Promise.all([
+      const [c, e, w, cfg, me, h, win, lg, st, sf, ms, tu] = await Promise.all([
         api.get("/contests"),
         api.get("/entries/mine"),
         api.get("/withdrawals/mine"),
@@ -174,7 +175,9 @@ export default function UserApp() {
         api.get("/legal/config"),
         api.get("/me/season-stats"),
         api.get("/me/safety"),
-        api.get("/matches"),
+        // Newer endpoints: an older backend must not take the whole lobby down.
+        api.get("/matches").catch(() => ({ data: [] })),
+        api.get("/wallet/topups/mine").catch(() => ({ data: [] })),
       ]);
       setContests(c.data);
       setEntries(e.data);
@@ -187,6 +190,7 @@ export default function UserApp() {
       setStats(st.data);
       setSafety(sf.data);
       setMatches(ms.data);
+      setTopups(tu.data || []);
       setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
@@ -238,6 +242,8 @@ export default function UserApp() {
   const picked = matches.find((m) => m.id === matchFilter);
   const filterLabel = picked ? `${picked.team_a_short} vs ${picked.team_b_short}` : "";
   const liveContests = entries.filter((e) => ["pending", "approved"].includes(e.status)).length;
+  // Either payment rail is enough to let a player add money.
+  const canTopUp = !!config.razorpay_enabled || (!!config.manual_upi_enabled && !!config.admin_upi_id);
 
   return (
     <div className="min-h-screen bg-zinc-100" data-testid="user-app">
@@ -445,25 +451,31 @@ export default function UserApp() {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-gold/70">entry fees only</span>
                   </div>
                 )}
-                {config.razorpay_enabled && (
-                  <Button
-                    onClick={() => setTopUpOpen(true)}
-                    className="mt-6 w-full bg-emerald-400 text-emerald-950 hover:bg-emerald-300 font-bold rounded-md active:scale-95"
-                    data-testid="add-money-btn"
-                  >
-                    <PlusCircle size={18} weight="bold" className="mr-1" /> Add money
-                  </Button>
-                )}
+                <Button
+                  onClick={() => setTopUpOpen(true)}
+                  disabled={!canTopUp}
+                  title={canTopUp ? "" : "The organiser has not set up a payment method yet"}
+                  className="mt-6 w-full bg-emerald-400 text-emerald-950 hover:bg-emerald-300 font-bold rounded-md active:scale-95"
+                  data-testid="add-money-btn"
+                >
+                  <PlusCircle size={18} weight="bold" className="mr-1" /> Add money
+                </Button>
                 <Button
                   disabled={(user?.wallet_balance || 0) <= 0}
                   onClick={() => setWdOpen(true)}
-                  className={`${config.razorpay_enabled ? "mt-3" : "mt-6"} w-full bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-md active:scale-95`}
+                  className="mt-3 w-full bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-md active:scale-95"
                   data-testid="request-withdrawal-btn"
                 >
                   <CurrencyInr size={18} weight="bold" className="mr-1" /> Request withdrawal
                 </Button>
+                {!canTopUp && (
+                  <p className="text-[11px] text-emerald-100/80 mt-3" data-testid="topup-unavailable-note">
+                    Payments are being set up — adding money will appear here shortly.
+                  </p>
+                )}
               </div>
               <div className="md:col-span-2 space-y-5">
+                <TopupRequests items={topups} />
                 <WalletHistory items={history} />
                 <div className="bg-white border border-zinc-200 rounded-lg">
                 <div className="p-5 border-b border-zinc-100">
@@ -525,7 +537,7 @@ export default function UserApp() {
 
       <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} bonusBalance={user?.bonus_balance || 0} onTopUp={() => setTopUpOpen(true)} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} config={config} />
-      <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} />
+      <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} config={config} />
       {legal && (mustAccept || termsOpen) && (
         <TermsGate legal={legal} locked={mustAccept} onAccepted={loadAll} onClose={() => setTermsOpen(false)} />
       )}
@@ -1129,21 +1141,31 @@ function NotificationBell({ refreshToken }) {
   );
 }
 
-function TopUpDialog({ open, onClose, onDone }) {
+/**
+ * Wallet top-up. Both rails are offered whenever the organiser has them on:
+ * the gateway credits instantly, a UPI transfer is held as a request until the
+ * UTR is matched against the bank statement.
+ */
+function TopUpDialog({ open, onClose, onDone, config = {} }) {
+  const online = !!config.razorpay_enabled;
+  const upi = !!config.manual_upi_enabled && !!config.admin_upi_id;
+  const [mode, setMode] = useState("online");
   const [amt, setAmt] = useState("");
+  const [utr, setUtr] = useState("");
   const [busy, setBusy] = useState(false);
   const presets = [100, 250, 500, 1000, 2000];
 
-  useEffect(() => { if (open) { setAmt(""); setBusy(false); } }, [open]);
+  useEffect(() => { if (open) { setAmt(""); setUtr(""); setBusy(false); setMode(online ? "online" : "upi"); } }, [open, online]);
 
-  const submit = async () => {
-    const n = parseFloat(amt);
-    if (!n || n < 1) { toast.error("Enter an amount of ₹1 or more"); return; }
-    if (n > 100000) { toast.error("Maximum top-up is ₹1,00,000"); return; }
+  const amount = parseFloat(amt);
+  const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "PitchPlay")}&am=${amount || ""}&cu=INR&tn=${encodeURIComponent("Wallet top-up")}`;
+  const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
+
+  const payOnline = async () => {
     setBusy(true);
     try {
-      await topUpWallet(n);
-      toast.success(`${money(n)} added to your wallet!`);
+      await topUpWallet(amount);
+      toast.success(`${money(amount)} added to your wallet!`);
       onClose();
       onDone();
     } catch (e) {
@@ -1154,13 +1176,54 @@ function TopUpDialog({ open, onClose, onDone }) {
     }
   };
 
+  const submitUtr = async () => {
+    if (utr.trim().length < 4) { toast.error("Enter the UTR from your payment app"); return; }
+    setBusy(true);
+    try {
+      await api.post("/wallet/topup/manual", { amount, utr: utr.trim().toUpperCase() });
+      toast.success(`${money(amount)} submitted for verification`);
+      onClose();
+      onDone();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not submit the reference");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = () => {
+    if (!amount || amount < 1) { toast.error("Enter an amount of ₹1 or more"); return; }
+    if (amount > 100000) { toast.error("Maximum top-up is ₹1,00,000"); return; }
+    if (mode === "online") payOnline(); else submitUtr();
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md" data-testid="topup-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-2xl font-extrabold">Add money to wallet</DialogTitle>
-          <DialogDescription>Top up instantly via Razorpay. Your balance is ready to use for contest entries right away.</DialogDescription>
+          <DialogDescription>
+            {mode === "online"
+              ? "Pay by UPI, card or net banking. Your balance is ready the moment it succeeds."
+              : "Transfer to the UPI id below, then submit the reference so we can credit you."}
+          </DialogDescription>
         </DialogHeader>
+
+        {online && upi && (
+          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-zinc-100 border border-zinc-200" data-testid="topup-mode-switch">
+            {[["online", "Instant pay"], ["upi", "UPI transfer"]].map(([k, label]) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setMode(k)}
+                className={`py-2 rounded-md text-sm font-bold transition-colors ${mode === k ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-500 hover:text-zinc-800"}`}
+                data-testid={`topup-mode-${k}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {presets.map((p) => (
@@ -1179,15 +1242,78 @@ function TopUpDialog({ open, onClose, onDone }) {
             <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Amount (₹)</Label>
             <Input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder="Enter amount" className="mt-2 tabular" data-testid="topup-amount-input" />
           </div>
+
+          {mode === "upi" && (
+            <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4" data-testid="topup-upi-panel">
+              <div className="flex items-center gap-3">
+                {config.qr_path
+                  ? <ScreenshotViewer path={config.qr_path} testId="topup-qr-image" className="w-[110px] rounded" />
+                  : <QRCodeSVG value={upiLink} size={110} data-testid="topup-upi-qr" />}
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Pay to UPI id</div>
+                  <div className="font-heading text-lg font-extrabold text-zinc-950 tabular truncate select-all" data-testid="topup-upi-id">{config.admin_upi_id || "—"}</div>
+                  {config.payee_name && <div className="text-xs text-zinc-500">{config.payee_name}</div>}
+                  <button type="button" onClick={copyUpi} className="mt-1 text-[11px] font-bold uppercase tracking-widest text-emerald-700 hover:text-emerald-900" data-testid="topup-copy-upi">
+                    <Copy size={11} weight="bold" className="inline mr-1" /> Copy
+                  </button>
+                </div>
+              </div>
+              {config.instructions && <p className="text-[11px] text-zinc-500" data-testid="topup-instructions">{config.instructions}</p>}
+              <div>
+                <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Transaction reference (UTR)</Label>
+                <Input
+                  value={utr}
+                  onChange={(e) => setUtr(e.target.value.toUpperCase().replace(/[^0-9A-Z-]/g, "").slice(0, 32))}
+                  placeholder="12-digit UTR from your payment app"
+                  className="mt-2 tabular uppercase"
+                  data-testid="topup-utr-input"
+                />
+                <p className="text-[11px] text-zinc-500 mt-1.5">
+                  It is credited once the organiser confirms the payment against their statement.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="topup-cancel">Cancel</Button>
-          <Button disabled={busy} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="topup-pay-btn">
-            <Lightning size={16} weight="fill" className="mr-1" /> {busy ? "Opening checkout..." : "Proceed to pay"}
+          <Button disabled={busy || (!online && !upi)} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="topup-pay-btn">
+            {mode === "online" ? (
+              <><Lightning size={16} weight="fill" className="mr-1" /> {busy ? "Opening checkout..." : "Proceed to pay"}</>
+            ) : (
+              <><CheckCircle size={16} weight="bold" className="mr-1" /> {busy ? "Submitting..." : "Submit UTR"}</>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Manual UPI top-ups the player has sent, with where each one stands. */
+function TopupRequests({ items }) {
+  if (!items?.length) return null;
+  const tone = { pending: "bg-amber-100 text-amber-800", approved: "bg-emerald-100 text-emerald-800", rejected: "bg-red-100 text-red-700" };
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg" data-testid="topup-requests">
+      <div className="p-5 border-b border-zinc-100 font-heading font-bold text-zinc-950">Top-up requests</div>
+      <div className="divide-y divide-zinc-100">
+        {items.map((t) => (
+          <div key={t.id} className="p-4 flex items-center justify-between gap-3" data-testid={`topup-row-${t.id}`}>
+            <div className="min-w-0">
+              <div className="font-heading font-bold text-zinc-950 tabular">{money(t.amount)}</div>
+              <div className="text-[11px] text-zinc-500 truncate">
+                UTR {t.utr} · {new Date(t.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+              </div>
+              {t.decision_note && <div className="text-[11px] text-zinc-500 mt-0.5">{t.decision_note}</div>}
+            </div>
+            <span className={`shrink-0 text-[10px] font-extrabold uppercase tracking-widest px-2 py-1 rounded ${tone[t.status] || "bg-zinc-100 text-zinc-600"}`} data-testid={`topup-status-${t.id}`}>
+              {t.status}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
