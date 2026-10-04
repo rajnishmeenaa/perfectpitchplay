@@ -8,12 +8,13 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning, Flag, ShieldCheck } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning, Flag, ShieldCheck, Scroll } from "@phosphor-icons/react";
 import { Switch } from "../components/ui/switch";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import AdminFantasy from "./AdminFantasy";
 import AdminGuardrails from "./AdminGuardrails";
+import AdminOps from "./AdminOps";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const toLocalInput = (iso) => { const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -29,6 +30,8 @@ const StatusBadge = ({ status }) => {
     open: "bg-emerald-100 text-emerald-800",
     closed: "bg-zinc-200 text-zinc-700",
     completed: "bg-zinc-200 text-zinc-700",
+    refunded: "bg-sky-100 text-sky-800",
+    abandoned: "bg-red-100 text-red-700",
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${map[status] || "bg-zinc-100 text-zinc-700"}`}>{status}</span>
@@ -44,6 +47,7 @@ const sections = [
   { key: "users", label: "Users", icon: Users },
   { key: "payment", label: "Payment settings", icon: Gear },
   { key: "guardrails", label: "Guardrails & legal", icon: ShieldCheck },
+  { key: "ops", label: "App & audit", icon: Scroll },
 ];
 
 export default function AdminApp() {
@@ -96,6 +100,7 @@ export default function AdminApp() {
         {active === "users" && <UsersPanel />}
         {active === "payment" && <PaymentSettingsPanel />}
         {active === "guardrails" && <AdminGuardrails />}
+        {active === "ops" && <AdminOps />}
       </main>
     </div>
   );

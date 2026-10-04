@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
 import { isNative, notificationPermission, syncReminders } from "../lib/notifications";
-import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal } from "@phosphor-icons/react";
+import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const ROLES = ["WK", "BAT", "AR", "BOWL"];
@@ -45,7 +45,7 @@ const StatusChip = ({ status }) => {
   return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${map[status] || "bg-zinc-100 text-zinc-600"}`} data-testid={`match-status-${status}`}>{status === "upcoming" ? "upcoming" : status}</span>;
 };
 
-export default function FantasyApp({ config, walletBalance = 0, focusMatchId, entries = [], onJoinFantasy }) {
+export default function FantasyApp({ config, walletBalance = 0, focusMatchId, entries = [], onJoinFantasy, onMoneyChanged }) {
   const [matches, setMatches] = useState([]);
   const [matchId, setMatchId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -140,6 +140,7 @@ export default function FantasyApp({ config, walletBalance = 0, focusMatchId, en
           config={config}
           walletBalance={walletBalance}
           onJoinFantasy={onJoinFantasy}
+          onMoneyChanged={onMoneyChanged}
         />
       )}
       {loadingDetail && !detail && <div className="text-sm text-zinc-500">Loading match…</div>}
@@ -168,9 +169,14 @@ function MatchCard({ match, active, onOpen }) {
         <div className="font-heading text-lg font-extrabold text-zinc-950 text-right">{match.team_b_short}</div>
       </div>
       <div className="text-xs text-zinc-500 mt-1 truncate">{match.team_a_name} vs {match.team_b_name}</div>
-      {cd && (
+      {cd && match.status === "upcoming" && (
         <div className={`mt-3 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold tabular ${cd.over ? "bg-zinc-100 text-zinc-600" : cd.urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-orange-50 text-orange-800"}`} data-testid={`match-countdown-${match.id}`}>
           <Clock size={13} weight="bold" /> {cd.over ? cd.text : `Starts in ${cd.text}`}
+        </div>
+      )}
+      {match.status !== "upcoming" && (
+        <div className={`mt-3 flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-bold ${match.status === "live" ? "bg-red-600 text-white" : "bg-zinc-100 text-zinc-600"}`} data-testid={`match-state-${match.status}`}>
+          <Broadcast size={13} weight="fill" /> {match.status === "live" ? "Match is live now" : "Match finished"}
         </div>
       )}
       <div className="flex items-center gap-3 mt-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500">
@@ -182,7 +188,7 @@ function MatchCard({ match, active, onOpen }) {
   );
 }
 
-function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy }) {
+function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy, onMoneyChanged }) {
   const { match, players, contests, my_teams } = detail;
   // Draft lives here so switching sub-tabs never throws away an in-progress XI.
   const [draft, setDraft] = useState({ ids: [], captain: "", vice: "", name: "", editingId: null });
@@ -219,6 +225,8 @@ function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy }
         </div>
       </div>
 
+      <LiveStrip match={match} />
+
       <Tabs defaultValue="build" className="w-full">
         <TabsList className="bg-zinc-100 border border-zinc-200 rounded-full p-1 h-auto">
           <TabsTrigger value="build" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-build">
@@ -254,10 +262,96 @@ function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy }
             config={config}
             walletBalance={walletBalance}
             onJoinFantasy={onJoinFantasy}
+            onMoneyChanged={onMoneyChanged}
             onReload={reload}
           />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function LiveStrip({ match }) {
+  const [live, setLive] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const interesting = ["live", "completed"].includes(match.status) || match.auto_live;
+
+  const load = async () => {
+    try {
+      const { data } = await api.get(`/matches/${match.id}/live`);
+      setLive(data);
+    } catch (e) { /* keep whatever we already had on screen */ }
+  };
+
+  useEffect(() => {
+    if (!interesting) return undefined;
+    load(); // eslint-disable-next-line
+    const t = setInterval(load, match.status === "live" ? 30000 : 300000);
+    return () => clearInterval(t);
+  }, [match.id, match.status, interesting]);
+
+  if (!interesting) return null;
+
+  const refresh = async () => {
+    setBusy(true);
+    await load();
+    setBusy(false);
+  };
+
+  return (
+    <div className="bg-zinc-950 text-white rounded-lg p-4" data-testid="live-strip">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest rounded px-2 py-1 ${match.status === "live" ? "bg-red-600 text-white animate-pulse" : "bg-zinc-800 text-zinc-300"}`} data-testid="live-badge">
+          <Broadcast size={11} weight="fill" /> {match.status === "live" ? "live" : match.status}
+        </span>
+        <span className="text-sm font-bold truncate" data-testid="live-status-text">{live?.status_text || "Score not published yet"}</span>
+        {live?.venue && <span className="text-[11px] text-zinc-400 truncate">{live.venue}</span>}
+        <button type="button" onClick={refresh} disabled={busy} className="ml-auto text-[11px] font-bold text-zinc-300 hover:text-white flex items-center gap-1 disabled:opacity-50" data-testid="live-refresh">
+          <ArrowsClockwise size={13} weight="bold" className={busy ? "animate-spin" : ""} /> {busy ? "Refreshing" : "Refresh"}
+        </button>
+      </div>
+
+      {live?.available && (
+        <div className="flex flex-wrap gap-2 mt-3">
+          {(live.innings || []).map((row, i) => (
+            <div key={`${row.innings}-${i}`} className="bg-zinc-800/80 rounded-md px-3 py-2 min-w-[132px]" data-testid={`live-innings-${i}`}>
+              <div className="text-[10px] uppercase tracking-widest text-zinc-400 truncate">{row.innings || `Innings ${i + 1}`}</div>
+              <div className="text-lg font-extrabold tabular">{row.runs}<span className="text-zinc-400">/{row.wickets}</span></div>
+              {row.overs ? <div className="text-[11px] text-zinc-400 tabular">{row.overs} ov</div> : null}
+            </div>
+          ))}
+          {(live.top_performers || []).slice(0, 3).map((p) => (
+            <div key={p.name} className="bg-zinc-800/50 rounded-md px-3 py-2" data-testid={`live-top-${p.name}`}>
+              <div className="text-[10px] uppercase tracking-widest text-emerald-400">{p.team} · {p.role}</div>
+              <div className="text-sm font-bold truncate max-w-[130px]">{p.name}</div>
+              <div className="text-[11px] text-orange-400 font-extrabold tabular">{p.points} pts</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {live?.my_positions?.length > 0 && (
+        <div className="flex flex-wrap gap-3 mt-3 text-[11px] text-zinc-300" data-testid="live-my-positions">
+          {live.my_positions.map((p) => (
+            <span key={p.contest_id} className="bg-zinc-800/60 rounded px-2 py-1">
+              <b className="text-white tabular">#{p.rank || "—"}</b> · {p.team_name || "your team"} · <span className="tabular text-orange-400 font-bold">{p.points ?? 0} pts</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {!live?.available && (
+        <p className="text-[11px] text-zinc-400 mt-2" data-testid="live-empty-hint">
+          The admin has not pushed a live update for this match yet — it appears here automatically once they do.
+        </p>
+      )}
+      {live?.available && live.updated_at && (
+        <p className="text-[10px] text-zinc-500 mt-2 tabular" data-testid="live-updated">
+          Updated {new Date(live.updated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+          {live.partial ? " · mid-match totals, final after the scorecard" : ""}
+          {live.error ? ` · ${live.error}` : ""}
+        </p>
+      )}
     </div>
   );
 }
@@ -305,6 +399,20 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
 
   const reset = () => set({ ids: [], captain: "", vice: "", name: "", editingId: null });
 
+  const autoPick = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.get(`/fantasy/suggested-team?match_id=${match.id}`);
+      set({ ids: data.player_ids, captain: data.captain_id, vice: data.vice_captain_id, name: data.name, editingId: null });
+      toast.success(`Auto-picked on ${data.basis === "projection" ? "the admin's projections" : "credit weight"} — ${data.credits_used}/${CREDIT_BUDGET} credits`);
+      (data.warnings || []).forEach((w) => toast(w));
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not auto-build a team");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const ready = ids.length === TEAM_SIZE && !!captain && !!vice && captain !== vice && !locked;
 
   const save = async () => {
@@ -328,6 +436,11 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
       <div className="lg:col-span-2 bg-white border border-zinc-200 rounded-lg" data-testid="squad-picker">
         <div className="p-4 border-b border-zinc-100 flex flex-wrap items-center gap-2">
           <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Select players</span>
+          <button type="button" onClick={autoPick} disabled={locked || busy}
+            className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-3 py-1 hover:bg-violet-100 disabled:opacity-40"
+            data-testid="auto-pick-btn">
+            <Sparkle size={13} weight="fill" /> Auto-pick XI
+          </button>
           <div className="flex gap-1 ml-auto">
             {["ALL", ...ROLES].map((r) => (
               <button key={r} type="button" onClick={() => setRoleFilter(r)}
@@ -490,6 +603,26 @@ function MyTeams({ teams, players, match, onReload }) {
       setBusy(false);
     }
   };
+
+  const share = async (tm) => {
+    const rows = (tm.players || []).filter(Boolean).map((p) => {
+      const tag = p.id === tm.captain_id ? " (C)" : p.id === tm.vice_captain_id ? " (VC)" : "";
+      return `• ${p.name}${tag} — ${p.role}`;
+    });
+    const text = `${tm.name} · ${match.team_a_short} vs ${match.team_b_short}\n${rows.join("\n")}\n\nBuild yours on PitchPlay and play the same match.`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: tm.name, text });
+        return;
+      }
+    } catch (e) { /* user dismissed the sheet */ }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Team copied — paste it in your group");
+    } catch (e) {
+      toast("Could not copy on this device");
+    }
+  };
   return (
     <div className="grid md:grid-cols-2 gap-4">
       {teams.map((tm) => {
@@ -502,9 +635,14 @@ function MyTeams({ teams, players, match, onReload }) {
                 <div className="font-heading font-extrabold text-zinc-950 truncate">{tm.name}</div>
                 <div className="text-xs text-zinc-500 mt-0.5 tabular">{tm.credits_used} credits · {tm.match_label}</div>
               </div>
-              <button type="button" disabled={busy || !!match.locked} onClick={() => remove(tm.id)} className="p-1.5 rounded text-zinc-400 hover:text-red-600 disabled:opacity-40" title="Delete team" data-testid={`delete-team-${tm.id}`}>
-                <Trash size={16} weight="bold" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button type="button" onClick={() => share(tm)} className="p-1.5 rounded text-zinc-400 hover:text-emerald-700" title="Share this XI" data-testid={`share-team-${tm.id}`}>
+                  <ShareNetwork size={16} weight="bold" />
+                </button>
+                <button type="button" disabled={busy || !!match.locked} onClick={() => remove(tm.id)} className="p-1.5 rounded text-zinc-400 hover:text-red-600 disabled:opacity-40" title="Delete team" data-testid={`delete-team-${tm.id}`}>
+                  <Trash size={16} weight="bold" />
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-3">
               {rows.map((p) => {
@@ -538,9 +676,32 @@ function MyTeams({ teams, players, match, onReload }) {
   );
 }
 
-function FantasyContests({ contests, myTeams, match, config, walletBalance, onJoinFantasy, onReload }) {
+function FantasyContests({ contests, myTeams, match, config, walletBalance, onJoinFantasy, onMoneyChanged, onReload }) {
   const [picked, setPicked] = useState({});
   const [boardFor, setBoardFor] = useState(null);
+  const [multiTeam, setMultiTeam] = useState("");
+  const [multiSel, setMultiSel] = useState([]);
+  const [busyMulti, setBusyMulti] = useState(false);
+  const openOnes = contests.filter((c) => c.status === "open" && !match.locked && Number(c.entry_fee) > 0);
+  const multiTeamId = multiTeam || (myTeams[0] && myTeams[0].id) || "";
+  const multiCost = openOnes.filter((c) => multiSel.includes(c.id)).reduce((a, c) => a + Number(c.entry_fee || 0), 0);
+
+  const joinMany = async () => {
+    if (!multiTeamId || !multiSel.length) return;
+    setBusyMulti(true);
+    try {
+      const { data } = await api.post("/fantasy/enter-multi", { team_id: multiTeamId, contest_ids: multiSel });
+      toast.success(`Joined ${data.joined.length} contest${data.joined.length === 1 ? "" : "s"} · wallet ${money(data.wallet_balance)} left`);
+      setMultiSel([]);
+      onReload();
+      if (onMoneyChanged) onMoneyChanged();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not join those contests");
+    } finally {
+      setBusyMulti(false);
+    }
+  };
+
   if (!contests.length) {
     return <div className="bg-white border border-zinc-200 rounded-lg p-8 text-center text-sm text-zinc-500" data-testid="no-fantasy-contests">No fantasy contest for this match yet. The admin can create one.</div>;
   }
@@ -549,6 +710,47 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
       {myTeams.length === 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-900 flex items-center gap-2" data-testid="need-team-banner">
           <Info size={16} weight="bold" /> Save a team first — every entry plays with one of your XIs.
+        </div>
+      )}
+
+      {myTeams.length > 0 && openOnes.length > 1 && (
+        <div className="bg-white border border-emerald-200 rounded-lg p-4" data-testid="multi-join-panel">
+          <div className="flex flex-wrap items-center gap-2">
+            <Wallet size={16} weight="fill" className="text-emerald-600" />
+            <span className="text-sm font-extrabold text-zinc-900">Play one XI in several contests</span>
+            <span className="text-[11px] text-zinc-500">paid from your wallet ({money(walletBalance)})</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 mt-3">
+            <select
+              value={multiTeamId}
+              onChange={(e) => setMultiTeam(e.target.value)}
+              className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              data-testid="multi-team-select"
+            >
+              {myTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name} · {tm.credits_used} cr</option>)}
+            </select>
+            {openOnes.map((c) => {
+              const on = multiSel.includes(c.id);
+              const already = (c.my_entries || []).some((e) => e.team_id === multiTeamId);
+              return (
+                <button key={c.id} type="button" disabled={already}
+                  onClick={() => setMultiSel(on ? multiSel.filter((x) => x !== c.id) : [...multiSel, c.id])}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-40 ${on ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
+                  data-testid={`multi-pick-${c.id}`}>
+                  {already ? `${c.title} · in` : `${c.title} · ${money(c.entry_fee)}`}
+                </button>
+              );
+            })}
+            <Button size="sm" disabled={!multiTeamId || !multiSel.length || busyMulti || multiCost > walletBalance} onClick={joinMany}
+              className="ml-auto rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold active:scale-95" data-testid="multi-join-btn">
+              {busyMulti ? "Joining…" : `Join ${multiSel.length} · ${money(multiCost)}`}
+            </Button>
+          </div>
+          {multiCost > walletBalance && (
+            <p className="text-[11px] text-amber-700 mt-2" data-testid="multi-wallet-short">
+              Needs {money(multiCost)} — top up your wallet or pick fewer contests.
+            </p>
+          )}
         </div>
       )}
       {contests.map((c) => {

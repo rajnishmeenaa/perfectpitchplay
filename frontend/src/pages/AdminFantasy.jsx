@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
-import { Flag, Plus, Trash, Trophy, ChartBar, Check, X, Users, Medal, ShieldCheck, Lock, Lightning } from "@phosphor-icons/react";
+import { Flag, Plus, Trash, Trophy, ChartBar, Check, X, Users, Medal, ShieldCheck, Lock, Lightning, Broadcast, Sparkle } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const ROLES = ["WK", "BAT", "AR", "BOWL"];
@@ -226,18 +226,165 @@ function MatchAdmin({ match, onMatchChanged }) {
           <TabsTrigger value="scorecard" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-scorecard">
             <ChartBar size={15} weight="bold" className="mr-1.5" /> Scorecard & results
           </TabsTrigger>
+          <TabsTrigger value="live" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-live">
+            <Broadcast size={15} weight="bold" className="mr-1.5" /> Live centre
+          </TabsTrigger>
         </TabsList>
-        <TabsContent value="squad" className="mt-4"><SquadPanel match={match} /></TabsContent>
-        <TabsContent value="contests" className="mt-4"><FantasyContestPanel match={match} /></TabsContent>
-        <TabsContent value="scorecard" className="mt-4"><ScorecardPanel match={match} onMatchChanged={onMatchChanged} /></TabsContent>
+        <TabsContent value="squad" className="mt-4"><SquadPanel key={match.id} match={match} /></TabsContent>
+        <TabsContent value="contests" className="mt-4"><FantasyContestPanel key={match.id} match={match} /></TabsContent>
+        <TabsContent value="scorecard" className="mt-4"><ScorecardPanel key={match.id} match={match} onMatchChanged={onMatchChanged} /></TabsContent>
+        <TabsContent value="live" className="mt-4"><LiveCenterPanel key={match.id} match={match} onMatchChanged={onMatchChanged} /></TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function LiveCenterPanel({ match, onMatchChanged }) {
+  const [ext, setExt] = useState(match.external_id || "");
+  const [feed, setFeed] = useState(match.live_feed || "scorecard");
+  const [auto, setAuto] = useState(!!match.auto_live);
+  const [busy, setBusy] = useState(false);
+  const [snap, setSnap] = useState(null);
+  const [report, setReport] = useState(null);
+
+  const load = async () => {
+    try {
+      const { data } = await api.get(`/admin/matches/${match.id}/live`);
+      setSnap(data);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not read the live snapshot");
+    }
+  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [match.id]);
+
+  const saveSettings = async () => {
+    setBusy(true);
+    try {
+      await api.patch(`/admin/matches/${match.id}`, { external_id: ext.trim(), live_feed: feed, auto_live: auto });
+      toast.success("Live settings saved");
+      onMatchChanged();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not save live settings");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const push = async () => {
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/admin/matches/${match.id}/live/sync`, { feed });
+      setReport(data);
+      toast.success(`Live update pushed · ${data.scores_written} player lines · ${data.boards.entries_ranked} entries re-ranked`);
+      await load();
+      onMatchChanged();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Live sync failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const clear = async () => {
+    try {
+      await api.delete(`/admin/matches/${match.id}/live`);
+      setReport(null);
+      toast("Live snapshot cleared");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not clear");
+    }
+  };
+
+  const live = snap?.live || {};
+  return (
+    <div className="space-y-4">
+      <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="live-settings">
+        <h4 className="font-heading font-extrabold text-zinc-950 flex items-center gap-2">
+          <Broadcast size={16} weight="fill" className="text-red-600" /> Push live scores into the app
+        </h4>
+        <p className="text-sm text-zinc-500 mt-1">Give the match its id from the score service (the Live import tab lists current ids). Then push an update, or let the app pull one automatically while users watch.</p>
+        <div className="flex flex-wrap items-end gap-3 mt-4">
+          <div className="min-w-[190px]">
+            <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Score-service match id</Label>
+            <Input value={ext} onChange={(e) => setExt(e.target.value)} placeholder="e.g. 984321" className="mt-1.5 tabular" data-testid="live-ext-id" />
+          </div>
+          <div>
+            <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Feed</Label>
+            <select value={feed} onChange={(e) => setFeed(e.target.value)} className="mt-1.5 block rounded-md border border-zinc-200 px-3 py-2 text-sm font-bold" data-testid="live-feed">
+              <option value="scorecard">scorecard</option>
+              <option value="fantasy">fantasy</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm font-bold text-zinc-700 mb-1 cursor-pointer" data-testid="live-auto-label">
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} className="rounded border-zinc-300 text-emerald-600" data-testid="live-auto-toggle" />
+            Auto-refresh for users
+          </label>
+          <Button size="sm" disabled={busy} onClick={saveSettings} variant="outline" className="rounded-full font-bold" data-testid="live-save-btn">Save settings</Button>
+          <Button size="sm" disabled={busy || !ext.trim()} onClick={push} className="rounded-full bg-red-600 hover:bg-red-700 text-white font-bold" data-testid="live-push-btn">
+            {busy ? "Working…" : "Push live update now"}
+          </Button>
+        </div>
+        {!snap?.config?.external_id && (
+          <p className="text-[11px] text-amber-700 mt-3" data-testid="live-no-id-hint">No match id saved yet — the app shows nothing until you set one and push.</p>
+        )}
+      </div>
+
+      {(live.innings || []).length > 0 && (
+        <div className="bg-zinc-950 text-white rounded-lg p-5" data-testid="admin-live-preview">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">What users see{live.auto_live ? " · auto-refresh on" : ""}</div>
+          <div className="text-sm font-bold mt-1" data-testid="admin-live-status">{live.status_text || "no status line"}</div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {live.innings.map((r, i) => (
+              <div key={`${r.innings}-${i}`} className="bg-zinc-800 rounded-md px-3 py-2">
+                <div className="text-[10px] uppercase tracking-widest text-zinc-400">{r.innings || `Innings ${i + 1}`}</div>
+                <div className="text-lg font-extrabold tabular">{r.runs}/{r.wickets}</div>
+                {r.overs ? <div className="text-[11px] text-zinc-400 tabular">{r.overs} ov</div> : null}
+              </div>
+            ))}
+          </div>
+          <div className="text-[11px] text-zinc-500 mt-3 tabular">
+            Snapshot {live.updated_at ? new Date(live.updated_at).toLocaleString("en-IN") : "—"}
+            {live.venue ? ` · ${live.venue}` : ""}
+          </div>
+        </div>
+      )}
+
+      {report && (
+        <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="live-sync-report">
+          <div className="flex items-center justify-between gap-2">
+            <h5 className="font-bold text-zinc-900">Last sync result</h5>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="rounded-full" onClick={push} disabled={busy}>Sync again</Button>
+              <Button size="sm" variant="ghost" className="rounded-full text-zinc-500" onClick={clear}>Clear snapshot</Button>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3 mt-3 text-sm">
+            <div className="bg-zinc-50 rounded-md p-3"><div className="text-[10px] uppercase tracking-widest text-zinc-500">Player lines written</div><div className="text-xl font-extrabold tabular">{report.scores_written}</div></div>
+            <div className="bg-zinc-50 rounded-md p-3"><div className="text-[10px] uppercase tracking-widest text-zinc-500">Matched to squad</div><div className="text-xl font-extrabold tabular">{report.matched}</div></div>
+            <div className="bg-zinc-50 rounded-md p-3"><div className="text-[10px] uppercase tracking-widest text-zinc-500">Entries re-ranked</div><div className="text-xl font-extrabold tabular">{report.boards?.entries_ranked ?? 0}</div></div>
+          </div>
+          {report.unmatched?.length > 0 && (
+            <p className="text-[11px] text-amber-700 mt-2" data-testid="live-unmatched">
+              Not matched to your squad: {report.unmatched.map((u) => u.source_name).join(", ")}
+            </p>
+          )}
+          {report.squad_without_stats?.length > 0 && (
+            <p className="text-[11px] text-zinc-500 mt-1">No stats yet for: {report.squad_without_stats.map((s) => s.player).join(", ")}</p>
+          )}
+        </div>
+      )}
+
+      <p className="text-[11px] text-zinc-500" data-testid="live-money-note">
+        Live updates only move points and ranks. Prizes are still paid when you settle the contest after the match.
+      </p>
     </div>
   );
 }
 
 function SquadPanel({ match }) {
   const [players, setPlayers] = useState([]);
-  const [row, setRow] = useState({ name: "", team: match.team_a_short, role: "BAT", credits: 9 });
+  const [row, setRow] = useState({ name: "", team: match.team_a_short, role: "BAT", credits: 9, projection: 0 });
   const [bulk, setBulk] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -261,7 +408,10 @@ function SquadPanel({ match }) {
     if (!row.name.trim()) { toast.error("Player name required"); return; }
     setBusy(true);
     try {
-      await api.post(`/admin/matches/${match.id}/players`, { name: row.name.trim(), team: row.team, role: row.role, credits: Number(row.credits) });
+      await api.post(`/admin/matches/${match.id}/players`, {
+        name: row.name.trim(), team: row.team, role: row.role, credits: Number(row.credits),
+        projection: Number(row.projection || 0),
+      });
       setRow({ ...row, name: "" });
       load();
     } catch (e) {
@@ -275,11 +425,14 @@ function SquadPanel({ match }) {
     const lines = bulk.split("\n").map((l) => l.trim()).filter(Boolean);
     if (!lines.length) { toast.error("Paste at least one line"); return; }
     const parsed = lines.map((l) => {
-      const [name, team, role, credits] = l.split(",").map((x) => (x || "").trim());
-      return { name, team: (team || match.team_a_short).toUpperCase(), role: (role || "BAT").toUpperCase(), credits: Number(credits || 9) };
+      const [name, team, role, credits, projection] = l.split(",").map((x) => (x || "").trim());
+      return {
+        name, team: (team || match.team_a_short).toUpperCase(), role: (role || "BAT").toUpperCase(),
+        credits: Number(credits || 9), projection: Number(projection || 0),
+      };
     });
     const bad = parsed.find((p) => !p.name || !ROLES.includes(p.role));
-    if (bad) { toast.error("Each line must be: Name, CODE, WK|BAT|AR|BOWL, credits"); return; }
+    if (bad) { toast.error("Each line must be: Name, CODE, WK|BAT|AR|BOWL, credits[, projection]"); return; }
     setBusy(true);
     try {
       const { data } = await api.post(`/admin/matches/${match.id}/players/bulk`, { players: parsed });
@@ -314,7 +467,7 @@ function SquadPanel({ match }) {
   return (
     <div className="space-y-4">
       <div className="bg-white border border-zinc-200 rounded-lg p-4" data-testid="player-add-form">
-        <div className="grid sm:grid-cols-5 gap-2">
+        <div className="grid sm:grid-cols-6 gap-2">
           <Input placeholder="Player name" value={row.name} onChange={(e) => setRow({ ...row, name: e.target.value })} className="sm:col-span-2" data-testid="player-name-input" />
           <select value={row.team} onChange={(e) => setRow({ ...row, team: e.target.value })} className="rounded-md border border-zinc-200 bg-white px-2 text-sm" data-testid="player-team-select">
             <option value={match.team_a_short}>{match.team_a_short}</option>
@@ -324,16 +477,20 @@ function SquadPanel({ match }) {
             {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
           <Input type="number" step="0.5" min="0.5" max="20" value={row.credits} onChange={(e) => setRow({ ...row, credits: e.target.value })} data-testid="player-credits-input" />
+          <Input type="number" step="1" min="0" max="500" value={row.projection} onChange={(e) => setRow({ ...row, projection: e.target.value })} placeholder="proj" data-testid="player-projection-input" />
         </div>
-        <div className="flex gap-2 mt-3">
+        <div className="flex flex-wrap gap-2 items-center mt-3">
           <Button size="sm" disabled={busy} onClick={add} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="add-player-btn">
             <Plus size={15} weight="bold" className="mr-1" /> Add player
           </Button>
+          <span className="text-[11px] text-zinc-500 flex items-center gap-1" data-testid="projection-hint">
+            <Sparkle size={12} weight="fill" className="text-violet-500" /> Projection = the fantasy points you expect. Users' “Auto-pick XI” ranks by it; leave 0 to use credits.
+          </span>
         </div>
         <details className="mt-3" data-testid="bulk-add">
           <summary className="text-xs font-bold uppercase tracking-widest text-zinc-500 cursor-pointer">Paste full squads (one per line)</summary>
           <Textarea value={bulk} onChange={(e) => setBulk(e.target.value)} rows={6}
-            placeholder={`${match.team_a_short}-Rohit, ${match.team_a_short}, BAT, 10\n${match.team_a_short}-Bumrah, ${match.team_a_short}, BOWL, 9\n${match.team_b_short}-Warner, ${match.team_b_short}, BAT, 9.5`}
+            placeholder={`${match.team_a_short}-Rohit, ${match.team_a_short}, BAT, 10, 45\n${match.team_a_short}-Bumrah, ${match.team_a_short}, BOWL, 9, 60\n${match.team_b_short}-Warner, ${match.team_b_short}, BAT, 9.5`}
             className="mt-2 font-mono text-xs" data-testid="bulk-input" />
           <Button size="sm" variant="outline" disabled={busy} onClick={addBulk} className="mt-2 rounded-full font-bold" data-testid="bulk-add-btn">Add all lines</Button>
         </details>
@@ -357,6 +514,9 @@ function SquadPanel({ match }) {
                   <input type="number" step="0.5" min="0.5" max="20" defaultValue={p.credits}
                     onBlur={(e) => Number(e.target.value) !== p.credits && patch(p.id, { credits: Number(e.target.value) })}
                     className="w-14 rounded border border-zinc-200 text-[11px] font-bold px-1 py-0.5 tabular" data-testid={`credits-of-${p.id}`} />
+                  <input type="number" step="1" min="0" max="500" defaultValue={p.projection || 0} title="Projected fantasy points"
+                    onBlur={(e) => Number(e.target.value) !== (p.projection || 0) && patch(p.id, { projection: Number(e.target.value) })}
+                    className="w-14 rounded border border-violet-200 bg-violet-50/60 text-[11px] font-bold px-1 py-0.5 tabular text-violet-800" data-testid={`projection-of-${p.id}`} />
                   <button type="button" onClick={() => patch(p.id, { playing: !p.playing })} title="Playing in XI?"
                     className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${p.playing ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-700"}`} data-testid={`playing-of-${p.id}`}>
                     {p.playing ? "XI" : "out"}

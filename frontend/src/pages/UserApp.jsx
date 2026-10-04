@@ -9,11 +9,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
 import { alertNewInboxItems } from "../lib/notifications";
+import { checkForUpdate } from "../lib/appUpdate";
 import FantasyApp from "./FantasyApp";
 import { useNavigate } from "react-router-dom";
 
@@ -28,6 +29,7 @@ const StatusBadge = ({ status }) => {
     open: "bg-emerald-100 text-emerald-800",
     closed: "bg-zinc-200 text-zinc-700",
     completed: "bg-zinc-200 text-zinc-700",
+    refunded: "bg-sky-100 text-sky-800",
   };
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${map[status] || "bg-zinc-100 text-zinc-700"}`} data-testid={`status-${status}`}>
@@ -129,10 +131,12 @@ export default function UserApp() {
   const [notifyToken, setNotifyToken] = useState(0);
   const [legal, setLegal] = useState(null);
   const [termsOpen, setTermsOpen] = useState(false);
+  const [stats, setStats] = useState(null);
+  const [update, setUpdate] = useState(null);
 
   const loadAll = async () => {
     try {
-      const [c, e, w, cfg, me, h, win, lg] = await Promise.all([
+      const [c, e, w, cfg, me, h, win, lg, st] = await Promise.all([
         api.get("/contests"),
         api.get("/entries/mine"),
         api.get("/withdrawals/mine"),
@@ -141,6 +145,7 @@ export default function UserApp() {
         api.get("/wallet/history"),
         api.get("/winners"),
         api.get("/legal/config"),
+        api.get("/me/season-stats"),
       ]);
       setContests(c.data);
       setEntries(e.data);
@@ -150,6 +155,7 @@ export default function UserApp() {
       setHistory(h.data);
       setWinners(win.data);
       setLegal(lg.data);
+      setStats(st.data);
       setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
@@ -157,6 +163,13 @@ export default function UserApp() {
   };
 
   useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, []);
+
+  // Installed APK vs. what the server publishes — silent on the web.
+  useEffect(() => {
+    let alive = true;
+    checkForUpdate().then((r) => { if (alive && r.available) setUpdate(r); });
+    return () => { alive = false; };
+  }, []);
 
   const doLogout = () => { logout(); navigate("/"); };
 
@@ -200,6 +213,23 @@ export default function UserApp() {
           <p className="text-zinc-500 mt-1">Browse the live contests, pay securely online and get instant access to the pitch.</p>
         </div>
 
+        {update && update.latest?.apk_url && (
+          <div className="mb-6 bg-emerald-950 text-white rounded-lg p-4 flex flex-wrap items-center gap-3" data-testid="update-banner">
+            <DownloadSimple size={20} weight="fill" className="text-emerald-400" />
+            <div className="min-w-0">
+              <div className="font-bold text-sm">Version {update.latest.version_name} is available</div>
+              <div className="text-[11px] text-emerald-200/80">
+                You are on {update.current.version || update.current.build}{update.latest.notes ? ` · ${update.latest.notes}` : ""}
+              </div>
+            </div>
+            <a href={update.latest.apk_url} target="_blank" rel="noopener noreferrer"
+              className="ml-auto bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold text-xs px-4 py-2.5 rounded-full active:scale-95"
+              data-testid="update-download-btn">
+              Update now
+            </a>
+          </div>
+        )}
+
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="bg-white border border-zinc-200 rounded-full p-1 h-auto" data-testid="tabs-list">
             <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-contests">
@@ -210,6 +240,9 @@ export default function UserApp() {
             </TabsTrigger>
             <TabsTrigger value="entries" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-entries">
               <Trophy size={16} className="mr-1.5" /> My Entries
+            </TabsTrigger>
+            <TabsTrigger value="stats" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-stats">
+              <ChartBar size={16} className="mr-1.5" /> My Stats
             </TabsTrigger>
             <TabsTrigger value="wallet" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-wallet">
               <Wallet size={16} className="mr-1.5" /> Wallet
@@ -269,6 +302,11 @@ export default function UserApp() {
                       {e.status === "won" && (
                         <div className="text-sm font-bold text-orange-700 mt-1 tabular">🏆 Prize: {money(e.winner_prize)}</div>
                       )}
+                      {e.status === "refunded" && (
+                        <div className="text-xs font-semibold text-sky-700 bg-sky-50 border border-sky-200 rounded px-2 py-1 mt-1.5 inline-block" data-testid={`refund-note-${e.id}`}>
+                          {money(e.entry_fee)} returned to your wallet · {e.refund_reason || e.decision_note || "contest cancelled"}
+                        </div>
+                      )}
                     </div>
                     {(e.status === "approved" || e.status === "won") && e.external_link && (
                       <a
@@ -285,6 +323,10 @@ export default function UserApp() {
                 ))}
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="stats" className="mt-6">
+            <SeasonStats stats={stats} />
           </TabsContent>
 
           <TabsContent value="wallet" className="mt-6">
@@ -326,8 +368,21 @@ export default function UserApp() {
                       <div key={w.id} className="p-5 flex items-center justify-between" data-testid={`withdrawal-row-${w.id}`}>
                         <div>
                           <div className="font-heading font-bold text-zinc-950 tabular">{money(w.amount)}</div>
-                          <div className="text-xs text-zinc-500 mt-0.5">to {w.upi_id} · {new Date(w.created_at).toLocaleString()}{w.payout_utr ? ` · UTR ${w.payout_utr}` : ""}</div>
-                          {w.status === "rejected" && w.decision_note && <div className="text-xs text-red-600 mt-0.5" data-testid={`wd-note-${w.id}`}>{w.decision_note}</div>}
+                          <div className="text-xs text-zinc-500 mt-0.5">to {w.upi_id} · {new Date(w.created_at).toLocaleString()}</div>
+                          <div className="text-[11px] text-zinc-500 mt-0.5 flex flex-wrap gap-x-2" data-testid={`payout-trail-${w.id}`}>
+                            {w.status === "paid" && (
+                              <span className="text-emerald-700 font-semibold">
+                                Sent {w.decided_at ? new Date(w.decided_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : ""}
+                                {w.payout_utr ? <> · UTR <b className="tabular select-all">{w.payout_utr}</b></> : null}
+                              </span>
+                            )}
+                            {w.status === "processing" && <span className="text-blue-700 font-semibold">Bank is processing the transfer{w.payout_requested_at ? ` · requested ${new Date(w.payout_requested_at).toLocaleDateString("en-IN")}` : ""}</span>}
+                            {w.status === "pending" && <span>Waiting for the admin to approve</span>}
+                            {w.payout_status && w.payout_status !== "paid" && w.status !== "paid" && <span className="uppercase tracking-wide">· {w.payout_status}</span>}
+                          </div>
+                          {(w.status === "rejected" || w.status === "paid") && w.decision_note && (
+                            <div className={`text-xs mt-0.5 ${w.status === "rejected" ? "text-red-600" : "text-zinc-500"}`} data-testid={`wd-note-${w.id}`}>{w.decision_note}</div>
+                          )}
                         </div>
                         <StatusBadge status={w.status} />
                       </div>
@@ -1001,6 +1056,111 @@ function WinnersBoard({ winners }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SeasonStats({ stats }) {
+  if (!stats) return <div className="text-sm text-zinc-500">Loading your season…</div>;
+  if (!stats.contests_played && !stats.teams_built) {
+    return (
+      <EmptyState title="No season history yet" body="Join a contest and your wins, points and payout trail show up here." />
+    );
+  }
+  const months = stats.monthly || [];
+  const peak = Math.max(1, ...months.map((m) => Math.max(m.wagered, m.won)));
+  const monthLabel = (m) => {
+    const d = new Date(`${m}-01T00:00:00`);
+    return isNaN(d.getTime()) ? m : d.toLocaleString("en-IN", { month: "short" });
+  };
+  const tiles = [
+    { label: "Contests played", value: stats.contests_played, testId: "stat-played" },
+    { label: "Contests won", value: stats.contests_won, testId: "stat-won" },
+    { label: "Win rate", value: `${stats.win_rate}%`, testId: "stat-winrate" },
+    { label: "Best finish", value: stats.best_rank ? `#${stats.best_rank}` : "—", testId: "stat-bestrank" },
+  ];
+  const moneyTiles = [
+    { label: "Entry fees spent", value: money(stats.wagered), tone: "text-zinc-900", testId: "stat-wagered" },
+    { label: "Prizes won", value: money(stats.winnings), tone: "text-orange-700", testId: "stat-winnings" },
+    { label: "Net result", value: `${stats.net >= 0 ? "+" : "−"}${money(Math.abs(stats.net))}`, tone: stats.net >= 0 ? "text-emerald-700" : "text-red-600", testId: "stat-net" },
+    { label: "Paid to UPI", value: money(stats.paid_out), tone: "text-emerald-700", testId: "stat-paidout" },
+  ];
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {tiles.map((t) => (
+          <div key={t.label} className="bg-white border border-zinc-200 rounded-lg p-4" data-testid={t.testId}>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{t.label}</div>
+            <div className="font-heading text-2xl font-extrabold text-zinc-950 tabular mt-1">{t.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {moneyTiles.map((t) => (
+          <div key={t.label} className="bg-white border border-zinc-200 rounded-lg p-4">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{t.label}</div>
+            <div className={`font-heading text-xl font-extrabold tabular mt-1 ${t.tone}`} data-testid={t.testId}>{t.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid md:grid-cols-3 gap-5">
+        <div className="md:col-span-2 bg-white border border-zinc-200 rounded-lg p-5" data-testid="season-chart">
+          <div className="font-heading font-bold text-zinc-950 flex items-center gap-2">
+            <ChartBar size={16} weight="bold" className="text-emerald-600" /> Spent vs won
+          </div>
+          {months.length === 0 ? (
+            <p className="text-sm text-zinc-500 mt-3">Not enough history to chart yet.</p>
+          ) : (
+            <>
+              <div className="flex items-end gap-3 mt-5 h-40">
+                {months.map((m) => (
+                  <div key={m.month} className="flex-1 flex flex-col items-center gap-1.5">
+                    <div className="w-full flex items-end justify-center gap-1.5 h-32">
+                      <div className="w-1/2 max-w-[26px] rounded-t bg-zinc-200" style={{ height: `${Math.max(3, (m.wagered / peak) * 100)}%` }} title={`${money(m.wagered)} spent`} data-testid={`bar-spent-${m.month}`} />
+                      <div className="w-1/2 max-w-[26px] rounded-t bg-orange-500" style={{ height: `${Math.max(3, (m.won / peak) * 100)}%` }} title={`${money(m.won)} won`} data-testid={`bar-won-${m.month}`} />
+                    </div>
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{monthLabel(m.month)}</div>
+                    <div className="text-[10px] text-zinc-400 tabular">{m.entries} ent</div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-4 mt-3 text-[11px] font-bold text-zinc-500">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-zinc-200" /> entry fees</span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-500" /> prizes</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-lg p-5 space-y-3" data-testid="season-extras">
+          <div className="font-heading font-bold text-zinc-950 flex items-center gap-2">
+            <Receipt size={16} weight="bold" className="text-emerald-600" /> Fine print
+          </div>
+          <Row label="Best win" value={stats.best_win ? `${money(stats.best_win.amount)} · ${stats.best_win.contest_title}` : "—"} testId="row-bestwin" />
+          <Row label="Top-3 finishes" value={stats.top3_finishes} testId="row-top3" />
+          <Row label="Fantasy teams built" value={stats.teams_built} testId="row-teams" />
+          <Row label="Matches played" value={stats.matches_played} testId="row-matches" />
+          <Row label="Total fantasy points" value={stats.total_points} testId="row-points" />
+          <Row label="Average points" value={stats.avg_points} testId="row-avg" />
+          {stats.contests_refunded > 0 && <Row label="Refunded entries" value={stats.contests_refunded} testId="row-refunds" />}
+          {stats.contests_pending > 0 && <Row label="Awaiting approval" value={stats.contests_pending} testId="row-pending" />}
+        </div>
+      </div>
+
+      <p className="text-[11px] text-zinc-500" data-testid="season-note">
+        Counts approved entries and settled prizes. Pending payments are not included, so this always matches your wallet ledger.
+      </p>
+    </div>
+  );
+}
+
+function Row({ label, value, testId }) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm border-b border-zinc-100 pb-2 last:border-0" data-testid={testId}>
+      <span className="text-zinc-500">{label}</span>
+      <span className="font-bold text-zinc-900 tabular truncate max-w-[60%] text-right">{value}</span>
     </div>
   );
 }

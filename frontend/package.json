@@ -4,6 +4,7 @@
   "private": true,
   "dependencies": {
     "@capacitor/android": "7.6.9",
+    "@capacitor/app": "^7.1.2",
     "@capacitor/core": "7.6.9",
     "@capacitor/local-notifications": "^7.0.7",
     "@hookform/resolvers": "5.0.1",

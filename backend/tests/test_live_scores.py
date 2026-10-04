@@ -204,7 +204,12 @@ def test_score_settings_never_leaks_key():
         await db_set("scores", {"key": "scores", "cricapi_key": "", "enabled": False})
         s2 = await server.get_score_settings()
         assert s2["enabled"] is False
-    asyncio.get_event_loop().run_until_complete(scenario())
+    # a fresh loop: get_event_loop() has no running loop inside an xdist worker
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(scenario())
+    finally:
+        loop.close()
 
 
 async def db_set(key, doc):
