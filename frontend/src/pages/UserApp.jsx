@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, FirstAid, CheckCircle } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
 import { payForContest, topUpWallet } from "../lib/razorpay";
@@ -133,10 +133,11 @@ export default function UserApp() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [update, setUpdate] = useState(null);
+  const [safety, setSafety] = useState(null);
 
   const loadAll = async () => {
     try {
-      const [c, e, w, cfg, me, h, win, lg, st] = await Promise.all([
+      const [c, e, w, cfg, me, h, win, lg, st, sf] = await Promise.all([
         api.get("/contests"),
         api.get("/entries/mine"),
         api.get("/withdrawals/mine"),
@@ -146,6 +147,7 @@ export default function UserApp() {
         api.get("/winners"),
         api.get("/legal/config"),
         api.get("/me/season-stats"),
+        api.get("/me/safety"),
       ]);
       setContests(c.data);
       setEntries(e.data);
@@ -156,6 +158,7 @@ export default function UserApp() {
       setWinners(win.data);
       setLegal(lg.data);
       setStats(st.data);
+      setSafety(sf.data);
       setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
@@ -230,6 +233,8 @@ export default function UserApp() {
           </div>
         )}
 
+        {safety && <RealityCheck minutes={safety.reality_check_minutes} message={safety.reality_check_message} onTakeBreak={() => setTab("safety")} />}
+
         <Tabs value={tab} onValueChange={setTab} className="w-full">
           <TabsList className="bg-white border border-zinc-200 rounded-full p-1 h-auto" data-testid="tabs-list">
             <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-contests">
@@ -246,6 +251,9 @@ export default function UserApp() {
             </TabsTrigger>
             <TabsTrigger value="wallet" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-wallet">
               <Wallet size={16} className="mr-1.5" /> Wallet
+            </TabsTrigger>
+            <TabsTrigger value="safety" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-5 py-2 font-bold" data-testid="tab-safety">
+              <ShieldCheck size={16} className="mr-1.5" /> Play safely
             </TabsTrigger>
           </TabsList>
 
@@ -392,6 +400,16 @@ export default function UserApp() {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="safety" className="mt-6">
+            {safety ? (
+              <PlaySafely safety={safety} reload={loadAll} onOpenWallet={() => setTab("wallet")} />
+            ) : (
+              <div className="bg-white border border-zinc-200 rounded-lg p-8 text-center text-sm text-zinc-500" data-testid="safety-loading">
+                Loading your play-safety settings…
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </main>
@@ -1195,6 +1213,374 @@ function EmptyState({ title, body }) {
       <Clock size={40} weight="duotone" className="text-zinc-400 mx-auto" />
       <div className="font-heading font-bold text-zinc-800 text-lg mt-3">{title}</div>
       <div className="text-sm text-zinc-500 mt-1">{body}</div>
+    </div>
+  );
+}
+
+function SafetyTile({ label, value, sub, tone = "zinc", testId }) {
+  const skin = {
+    zinc: "bg-white border-zinc-200",
+    emerald: "bg-emerald-50 border-emerald-200",
+    amber: "bg-amber-50 border-amber-200",
+    red: "bg-red-50 border-red-200",
+  };
+  return (
+    <div className={`rounded-lg border px-4 py-3 ${skin[tone] || skin.zinc}`} data-testid={testId}>
+      <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{label}</div>
+      <div className="font-heading text-xl font-extrabold text-zinc-950 tabular mt-0.5">{value}</div>
+      {sub && <div className="text-[11px] text-zinc-600 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function RealityCheck({ minutes, message, onTakeBreak }) {
+  const [elapsed, setElapsed] = useState(0);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    if (!minutes) return undefined;
+    const t = setInterval(() => setElapsed((m) => m + 0.5), 30000);
+    return () => clearInterval(t);
+  }, [minutes]);
+  if (!minutes || gone || elapsed < minutes) return null;
+  return (
+    <div className="mb-6 bg-amber-50 border border-amber-300 rounded-lg p-4 flex flex-wrap items-center gap-3" data-testid="reality-check">
+      <Timer size={20} weight="fill" className="text-amber-700 shrink-0" />
+      <div className="min-w-0">
+        <div className="font-bold text-sm text-amber-900">You have been on the app about {Math.round(elapsed)} minutes</div>
+        <div className="text-[11px] text-amber-800">{message}</div>
+      </div>
+      <div className="ml-auto flex gap-2">
+        <button type="button" onClick={onTakeBreak} className="bg-amber-700 hover:bg-amber-800 text-white text-xs font-extrabold px-3 py-2 rounded-full" data-testid="reality-break-btn">
+          Take a break
+        </button>
+        <button type="button" onClick={() => setGone(true)} className="bg-white border border-amber-300 text-amber-800 text-xs font-bold px-3 py-2 rounded-full" data-testid="reality-dismiss-btn">
+          I'm fine
+        </button>
+      </div>
+    </div>
+  );
+}
+
+const EXCLUSION_OPTIONS = [1, 3, 7, 30, 90, 180];
+const TICKET_CATEGORIES = [
+  { key: "payment", label: "Payment or top-up" },
+  { key: "entry", label: "Contest entry" },
+  { key: "scorecard", label: "Scorecard or points" },
+  { key: "payout", label: "Withdrawal or payout" },
+  { key: "account", label: "Account or KYC" },
+  { key: "safety", label: "Play-safety request" },
+  { key: "other", label: "Something else" },
+];
+
+function PlaySafely({ safety, reload, onOpenWallet }) {
+  const [limit, setLimit] = useState(safety.deposit_limit_daily ? String(safety.deposit_limit_daily) : "");
+  const [rc, setRc] = useState(safety.reality_check_minutes ? String(safety.reality_check_minutes) : "");
+  const [busy, setBusy] = useState(false);
+  const [days, setDays] = useState(String(Math.max(safety.self_exclusion_min_days, 7)));
+  const [reason, setReason] = useState("");
+  const [kycName, setKycName] = useState("");
+  const [pan, setPan] = useState("");
+
+  const saveLimits = async () => {
+    setBusy(true);
+    try {
+      await api.put("/me/safety", { deposit_limit_daily: Number(limit || 0), reality_check_minutes: Number(rc || 0) });
+      toast.success("Limits saved");
+      reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not save your limits");
+    } finally { setBusy(false); }
+  };
+
+  const exclude = async () => {
+    setBusy(true);
+    try {
+      await api.post("/me/self-exclude", { days: Number(days), reason });
+      toast.success(`Self-exclusion starts now — until ${days} day(s) from today`);
+      reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not start the break");
+    } finally { setBusy(false); }
+  };
+
+  const lift = async () => {
+    setBusy(true);
+    try {
+      await api.post("/me/self-exclude/lift", { ack: true });
+      toast.success("Exclusion lifted");
+      reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "The organiser must lift this");
+    } finally { setBusy(false); }
+  };
+
+  const submitKyc = async () => {
+    setBusy(true);
+    try {
+      await api.put("/me/kyc", { full_name: kycName, pan });
+      toast.success("PAN submitted for verification");
+      reload();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Check the PAN and name");
+    } finally { setBusy(false); }
+  };
+
+  const kycSkin = { verified: "emerald", pending: "amber", rejected: "red", none: "zinc" };
+  const daysOptions = EXCLUSION_OPTIONS.filter((d) => d >= safety.self_exclusion_min_days && d <= safety.self_exclusion_max_days);
+
+  return (
+    <div className="space-y-5" data-testid="play-safely">
+      {safety.excluded && (
+        <div className="bg-red-50 border border-red-300 rounded-lg p-4 flex flex-wrap items-center gap-3" data-testid="exclusion-banner">
+          <FirstAid size={22} weight="fill" className="text-red-700" />
+          <div>
+            <div className="font-bold text-sm text-red-900">You are on a self-imposed break</div>
+            <div className="text-[11px] text-red-800">
+              Until {String(safety.self_exclusion.until).slice(0, 10)} you cannot join contests or add money.
+              Your wallet balance and winnings are safe — withdrawals stay open.
+            </div>
+          </div>
+          {safety.allow_self_lift && (
+            <Button size="sm" onClick={lift} disabled={busy} variant="outline" className="ml-auto rounded-full font-bold" data-testid="lift-exclusion-btn">
+              Ask to lift it
+            </Button>
+          )}
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <SafetyTile label="Deposited today" value={money(safety.deposited_today)}
+          sub={safety.deposit_limit_daily ? `limit ${money(safety.deposit_limit_daily)}` : safety.default_deposit_limit_daily ? `organiser limit ${money(safety.default_deposit_limit_daily)}` : "no limit set"}
+          tone={safety.deposit_limit_daily && safety.deposited_today >= safety.deposit_limit_daily ? "amber" : "zinc"} testId="tile-deposited" />
+        <SafetyTile label="Played today" value={money(safety.spent_today)}
+          sub={safety.daily_spend_cap ? `cap ${money(safety.daily_spend_cap)}` : "no daily cap"} tone="zinc" testId="tile-spent" />
+        <SafetyTile label="Reality check" value={safety.reality_check_minutes ? `${safety.reality_check_minutes} min` : "Off"}
+          sub="A timer reminds you while you play" tone={safety.reality_check_minutes ? "emerald" : "zinc"} testId="tile-reality" />
+        <SafetyTile label="KYC" value={(safety.kyc.status || "none").toUpperCase()}
+          sub={safety.kyc.pan ? `${safety.kyc.name || "Verified name"} · ${safety.kyc.pan}` : safety.kyc_required_for_payouts ? "Needed before payouts" : "Optional until you withdraw"}
+          tone={kycSkin[safety.kyc.status] || "zinc"} testId="tile-kyc" />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-5">
+        <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="limits-card">
+          <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
+            <CurrencyInr size={18} weight="fill" className="text-emerald-700" /> Money limits
+          </div>
+          <p className="text-[11px] text-zinc-500 mt-1">Applies to money you add to the wallet. Lower it any time; we only act on it immediately.</p>
+
+          <Label className="block mt-4 text-xs font-bold uppercase tracking-wider text-zinc-600">Daily deposit limit (₹)</Label>
+          <Input value={limit} onChange={(e) => setLimit(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric"
+            placeholder="0 = no limit" className="mt-1.5 tabular" data-testid="deposit-limit-input" disabled={!safety.allow_user_deposit_limit} />
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {[0, 100, 500, 1000, 2500].map((v) => (
+              <button key={v} type="button" onClick={() => setLimit(v ? String(v) : "")}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${String(v) === String(limit || 0) ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
+                data-testid={`limit-chip-${v}`}>{v ? money(v) : "No limit"}</button>
+            ))}
+          </div>
+
+          <Label className="block mt-4 text-xs font-bold uppercase tracking-wider text-zinc-600">Reality-check reminder (minutes)</Label>
+          <Input value={rc} onChange={(e) => setRc(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric"
+            placeholder="0 = off" className="mt-1.5 tabular" data-testid="reality-input" />
+
+          <Button onClick={saveLimits} disabled={busy} className="mt-4 w-full rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="save-limits-btn">
+            <CheckCircle size={16} weight="bold" className="mr-1" /> Save my limits
+          </Button>
+          {safety.kyc_required_for_payouts && safety.kyc.status !== "verified" && (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mt-3" data-testid="kyc-payout-note">
+              Payouts are on hold until your PAN is verified. <button type="button" className="underline font-bold" onClick={onOpenWallet}>Wallet</button> stays usable.
+            </p>
+          )}
+        </div>
+
+        <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="break-card">
+          <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
+            <FirstAid size={18} weight="fill" className="text-red-600" /> Take a break
+          </div>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Blocks new entries and deposits for the period you choose.
+            {safety.allow_self_lift ? " You can lift it yourself." : " Only the organiser can lift it early — that keeps the break honest."}
+          </p>
+          {safety.allow_self_exclusion ? (
+            <>
+              <div className="flex flex-wrap gap-1.5 mt-4">
+                {daysOptions.map((d) => (
+                  <button key={d} type="button" onClick={() => setDays(String(d))}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${days === String(d) ? "bg-red-600 text-white border-red-600" : "bg-white text-zinc-600 border-zinc-200 hover:border-red-400"}`}
+                    data-testid={`exclude-days-${d}`}>{d} day{d > 1 ? "s" : ""}</button>
+                ))}
+              </div>
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200}
+                placeholder="Why now? (only you and the organiser see this)" className="mt-3" data-testid="exclude-reason" />
+              <Button onClick={exclude} disabled={busy || safety.excluded} variant="outline"
+                className="mt-3 w-full rounded-full font-bold text-red-700 border-red-200 hover:bg-red-50" data-testid="start-exclusion-btn">
+                Start {days}-day break
+              </Button>
+            </>
+          ) : (
+            <p className="text-[11px] text-zinc-500 mt-3" data-testid="exclusion-disabled">
+              Self-exclusion is turned off in this app — ask the organiser to restrict your account.
+            </p>
+          )}
+          {(safety.support_email || safety.helpline) && (
+            <div className="mt-4 pt-4 border-t border-zinc-100 text-[11px] text-zinc-600 space-y-1" data-testid="help-contacts">
+              {safety.helpline && <div className="flex items-center gap-1.5"><DeviceMobile size={14} weight="bold" /> Helpline <b>{safety.helpline}</b></div>}
+              {safety.support_email && <div className="flex items-center gap-1.5">@ <b>{safety.support_email}</b></div>}
+              <div>Use the help desk below and we will reply inside the app.</div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="kyc-card">
+        <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
+          <IdentificationCard size={18} weight="fill" className="text-violet-700" /> Identity (PAN)
+        </div>
+        <p className="text-[11px] text-zinc-500 mt-1">
+          Real-money fantasy in India needs a verified adult identity. We store your PAN masked — it is never shown in full.
+        </p>
+        {safety.kyc.status === "verified" ? (
+          <p className="text-[12px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 mt-3" data-testid="kyc-verified">
+            Verified as {safety.kyc.name} · PAN {safety.kyc.pan}
+          </p>
+        ) : (
+          <>
+            {safety.kyc.status === "pending" && (
+              <p className="text-[12px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2 mt-3" data-testid="kyc-pending">
+                Submitted {safety.kyc.pan} for {safety.kyc.name} — waiting for the organiser to check it.
+              </p>
+            )}
+            {safety.kyc.status === "rejected" && (
+              <p className="text-[12px] font-semibold text-red-800 bg-red-50 border border-red-200 rounded px-3 py-2 mt-3" data-testid="kyc-rejected">
+                Not accepted: {safety.kyc.note || "the name and PAN did not match"}. Send it again below.
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2 mt-3">
+              <Input value={kycName} onChange={(e) => setKycName(e.target.value)} placeholder="Full name as on PAN"
+                className="flex-1 min-w-[180px]" data-testid="kyc-name-input" />
+              <Input value={pan} onChange={(e) => setPan(e.target.value.toUpperCase().slice(0, 10))} placeholder="PAN, e.g. ABCDE1234F"
+                className="w-40 tabular uppercase" data-testid="kyc-pan-input" />
+              <Button onClick={submitKyc} disabled={busy || kycName.trim().length < 3 || pan.length !== 10}
+                className="rounded-full bg-violet-600 hover:bg-violet-700 text-white font-bold" data-testid="kyc-submit-btn">
+                Submit
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <FaqList />
+      <SupportDesk />
+    </div>
+  );
+}
+
+function FaqList() {
+  const [items, setItems] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.get("/legal/faq").then(({ data }) => { if (alive) setItems(data.items || []); }).catch(() => { if (alive) setItems([]); });
+    return () => { alive = false; };
+  }, []);
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="faq-card">
+      <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
+        <Info size={18} weight="fill" className="text-emerald-700" /> Common questions
+      </div>
+      {items === null ? (
+        <p className="text-[11px] text-zinc-500 mt-2">Loading answers…</p>
+      ) : items.length === 0 ? (
+        <p className="text-[11px] text-zinc-500 mt-2" data-testid="faq-empty">No answers published yet — use the help desk below.</p>
+      ) : (
+        <div className="mt-3 divide-y divide-zinc-100 border border-zinc-100 rounded-md overflow-hidden">
+          {items.map((it, i) => (
+            <details key={i} className="group px-4 py-3" data-testid={`faq-item-${i}`}>
+              <summary className="flex items-center justify-between gap-3 cursor-pointer text-sm font-bold text-zinc-900 list-none">
+                <span>{it.q}</span>
+                <CaretDown size={16} weight="bold" className="text-zinc-400 shrink-0 group-open:rotate-180 transition-transform" />
+              </summary>
+              <p className="text-[12px] text-zinc-600 mt-2 leading-relaxed">{it.a}</p>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SupportDesk() {
+  const [items, setItems] = useState([]);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [cat, setCat] = useState("payment");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => {
+    api.get("/support/tickets/mine").then(({ data }) => setItems(data)).catch(() => {});
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const send = async () => {
+    setBusy(true);
+    try {
+      await api.post("/support/tickets", { subject, message, category: cat });
+      toast.success("Sent to the help desk");
+      setSubject(""); setMessage("");
+      load();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not send your issue");
+    } finally { setBusy(false); }
+  };
+
+  const canSend = subject.trim().length >= 4 && message.trim().length >= 10;
+  return (
+    <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="support-card">
+      <div className="flex items-center gap-2 font-heading font-bold text-zinc-950">
+        <ChatCenteredDots size={18} weight="fill" className="text-emerald-700" /> Help desk
+      </div>
+      <p className="text-[11px] text-zinc-500 mt-1">Payment stuck, wrong scorecard, payout delay — write it here and the reply lands in your notifications.</p>
+
+      <div className="grid sm:grid-cols-3 gap-2 mt-4">
+        <select value={cat} onChange={(e) => setCat(e.target.value)}
+          className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-bold sm:col-span-1" data-testid="ticket-category">
+          {TICKET_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+        </select>
+        <Input value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={140} placeholder="Subject"
+          className="sm:col-span-2" data-testid="ticket-subject" />
+      </div>
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        maxLength={2000}
+        rows={3}
+        placeholder="What happened? Include the contest or withdrawal reference if you have it."
+        className="mt-2 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        data-testid="ticket-message"
+      />
+      <Button onClick={send} disabled={busy || !canSend} className="mt-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold" data-testid="ticket-send-btn">
+        <PaperPlaneRight size={16} weight="fill" className="mr-1" /> {busy ? "Sending…" : "Send to help desk"}
+      </Button>
+
+      {items.length > 0 && (
+        <div className="mt-5 space-y-2">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Your tickets</div>
+          {items.map((t) => (
+            <div key={t.id} className="border border-zinc-200 rounded-md px-4 py-3" data-testid={`ticket-${t.id}`}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold text-zinc-900 flex-1 truncate">{t.subject}</span>
+                <Badge variant={t.status === "resolved" || t.status === "closed" ? "secondary" : "default"}
+                  className="uppercase text-[10px] font-extrabold" data-testid={`ticket-status-${t.id}`}>{t.status}</Badge>
+              </div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{t.category} · {new Date(t.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}</div>
+              <p className="text-[12px] text-zinc-700 mt-1.5">{t.message}</p>
+              {(t.replies || []).map((r, i) => (
+                <div key={i} className="mt-2 bg-emerald-50 border border-emerald-200 rounded px-3 py-2 text-[12px] text-emerald-900" data-testid={`ticket-reply-${t.id}-${i}`}>
+                  <b>{r.by}</b> · {r.message}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

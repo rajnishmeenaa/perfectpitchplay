@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { toast } from "sonner";
 import { isNative, notificationPermission, syncReminders } from "../lib/notifications";
-import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise } from "@phosphor-icons/react";
+import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise, CaretUp, CaretDown, ChartLine, Star, Eye, WarningCircle, CheckCircle, ArrowsLeftRight } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const ROLES = ["WK", "BAT", "AR", "BOWL"];
@@ -39,6 +39,17 @@ const fmtWhen = (iso) => {
   if (isNaN(d.getTime())) return iso;
   return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: true });
 };
+
+const COMPONENT_LABELS = {
+  playing_xi: "in starting XI", runs: "runs", fours: "fours", sixes: "sixes",
+  half_century: "50 bonus", century: "100 bonus", bronze_dinger: "30 bonus",
+  strike_rate: "strike rate", batting_bonus: "batting bonus",
+  wickets: "wickets", bowled_lbw: "bowled/lbw", four_wicket_haul: "4-wicket bonus",
+  five_wicket_haul: "5-wicket bonus", maiden: "maiden over", economy: "economy",
+  catching_bonus: "catching bonus", fielding_bonus: "fielding bonus",
+  stumpings: "stumpings", run_out_direct: "direct run out", run_out_thrower: "run out throw",
+};
+const prettyComponent = (k) => COMPONENT_LABELS[k] || String(k).replace(/_/g, " ");
 
 const StatusChip = ({ status }) => {
   const map = { upcoming: "bg-emerald-100 text-emerald-800", live: "bg-orange-100 text-orange-800", completed: "bg-zinc-200 text-zinc-700", abandoned: "bg-red-100 text-red-700" };
@@ -225,7 +236,7 @@ function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy, 
         </div>
       </div>
 
-      <LiveStrip match={match} />
+      <LiveCentre match={match} />
 
       <Tabs defaultValue="build" className="w-full">
         <TabsList className="bg-zinc-100 border border-zinc-200 rounded-full p-1 h-auto">
@@ -271,9 +282,45 @@ function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy, 
   );
 }
 
-function LiveStrip({ match }) {
+function RunRateChart({ series }) {
+  if (!series || series.length < 2) return null;
+  const w = 600, h = 120, pad = 6;
+  const maxRuns = Math.max(...series.map((p) => Number(p.runs) || 0), 1);
+  const maxWk = Math.max(...series.map((p) => Number(p.wickets) || 0), 1);
+  const x = (i) => pad + (i * (w - pad * 2)) / (series.length - 1);
+  const y = (v, max) => h - pad - (v / max) * (h - pad * 2);
+  const line = series.map((p, i) => `${x(i).toFixed(1)},${y(Number(p.runs) || 0, maxRuns).toFixed(1)}`).join(" ");
+  return (
+    <div className="mt-3" data-testid="run-rate-chart">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Runs and wickets per over</div>
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-24 bg-zinc-900 rounded-md" role="img" aria-label="run rate graph">
+        <polyline points={line} fill="none" stroke="#34d399" strokeWidth="2.5" />
+        {series.map((p, i) => (Number(p.wickets) ? (
+          <circle key={`w${i}`} cx={x(i)} cy={y(Number(p.wickets), maxWk)} r="3.5" fill="#f87171" />
+        ) : null))}
+      </svg>
+      <div className="flex justify-between text-[10px] text-zinc-500 tabular mt-1">
+        <span>over {series[0].over}</span>
+        <span className="text-red-400">{maxWk} wkt</span>
+        <span>over {series[series.length - 1].over} · {maxRuns} runs</span>
+      </div>
+    </div>
+  );
+}
+
+const ballSkin = (e) => {
+  if (e.wicket) return "bg-red-600 text-white border-red-500";
+  if (Number(e.runs) === 6) return "bg-violet-600 text-white border-violet-500";
+  if (Number(e.runs) === 4) return "bg-amber-400 text-amber-950 border-amber-300";
+  if (!Number(e.runs)) return "bg-zinc-800 text-zinc-300 border-zinc-700";
+  return "bg-zinc-700 text-white border-zinc-600";
+};
+
+function LiveCentre({ match }) {
   const [live, setLive] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [view, setView] = useState("ticker");
+  const [filter, setFilter] = useState("all");
   const interesting = ["live", "completed"].includes(match.status) || match.auto_live;
 
   const load = async () => {
@@ -290,13 +337,30 @@ function LiveStrip({ match }) {
     return () => clearInterval(t);
   }, [match.id, match.status, interesting]);
 
+  const refresh = async () => { setBusy(true); await load(); setBusy(false); };
+
+  const events = live?.events || [];
+  const shown = useMemo(() => {
+    let list = [...events].reverse();
+    if (filter === "mine") list = list.filter((e) => e.mine);
+    if (filter === "wickets") list = list.filter((e) => e.wicket);
+    if (filter === "boundaries") list = list.filter((e) => e.boundary || Number(e.runs) >= 4);
+    return list.slice(0, 40);
+  }, [events, filter]);
+  const lastOver = events.length ? String(events[events.length - 1].over ?? "") : "";
+  const thisOver = events.filter((e) => String(e.over ?? "") === lastOver);
+
   if (!interesting) return null;
 
-  const refresh = async () => {
-    setBusy(true);
-    await load();
-    setBusy(false);
-  };
+  const views = [
+    { key: "ticker", label: "Ball by ball", icon: Broadcast },
+    { key: "card", label: "Scorecard", icon: ChartLine },
+    { key: "mine", label: "My rank", icon: Medal },
+  ];
+  const filters = [
+    { key: "all", label: "All balls" }, { key: "mine", label: "My players" },
+    { key: "wickets", label: "Wickets" }, { key: "boundaries", label: "Boundaries" },
+  ];
 
   return (
     <div className="bg-zinc-950 text-white rounded-lg p-4" data-testid="live-strip">
@@ -330,23 +394,184 @@ function LiveStrip({ match }) {
         </div>
       )}
 
-      {live?.my_positions?.length > 0 && (
-        <div className="flex flex-wrap gap-3 mt-3 text-[11px] text-zinc-300" data-testid="live-my-positions">
-          {live.my_positions.map((p) => (
-            <span key={p.contest_id} className="bg-zinc-800/60 rounded px-2 py-1">
-              <b className="text-white tabular">#{p.rank || "—"}</b> · {p.team_name || "your team"} · <span className="tabular text-orange-400 font-bold">{p.points ?? 0} pts</span>
-            </span>
-          ))}
-        </div>
-      )}
-
       {!live?.available && (
         <p className="text-[11px] text-zinc-400 mt-2" data-testid="live-empty-hint">
           The admin has not pushed a live update for this match yet — it appears here automatically once they do.
         </p>
       )}
+
+      {live?.available && (
+        <>
+          <div className="flex gap-1.5 mt-4">
+            {views.map(({ key, label, icon: Icon }) => (
+              <button key={key} type="button" onClick={() => setView(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${view === key ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
+                data-testid={`live-view-${key}`}>
+                <Icon size={13} weight="bold" /> {label}
+              </button>
+            ))}
+          </div>
+
+          {view === "ticker" && (
+            <div className="mt-3" data-testid="live-ticker">
+              {thisOver.length > 0 && (
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">Over {lastOver}</span>
+                  <div className="flex gap-1 flex-wrap">
+                    {thisOver.map((e, i) => (
+                      <span key={i} className={`w-6 h-6 rounded-full border text-[10px] font-extrabold flex items-center justify-center tabular ${ballSkin(e)}`}
+                        data-testid={`over-dot-${i}`}>{e.wicket ? "W" : e.runs}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-1.5 flex-wrap">
+                {filters.map((f) => (
+                  <button key={f.key} type="button" onClick={() => setFilter(f.key)}
+                    className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${filter === f.key ? "bg-white text-zinc-900 border-white" : "bg-transparent text-zinc-300 border-zinc-700 hover:border-zinc-500"}`}
+                    data-testid={`ticker-filter-${f.key}`}>{f.label}</button>
+                ))}
+                <span className="ml-auto text-[10px] text-zinc-500 tabular self-center">{events.length} balls received</span>
+              </div>
+              {shown.length === 0 ? (
+                <p className="text-[11px] text-zinc-400 mt-3" data-testid="ticker-empty">
+                  No balls to show for this filter yet — the score service has not sent ball-by-ball data for this match.
+                </p>
+              ) : (
+                <div className="mt-2 max-h-64 overflow-y-auto divide-y divide-zinc-800 rounded-md bg-zinc-900/60">
+                  {shown.map((e, i) => (
+                    <div key={`${e.over}-${e.ball}-${i}`} className={`flex items-center gap-2 px-3 py-2 text-xs ${e.mine ? "bg-emerald-900/30" : ""}`} data-testid={`event-${i}`}>
+                      <span className={`w-7 h-7 shrink-0 rounded-full border text-[10px] font-extrabold flex items-center justify-center tabular ${ballSkin(e)}`}>
+                        {e.wicket ? "W" : (e.runs ?? "·")}
+                      </span>
+                      <span className="text-[10px] text-zinc-500 tabular w-10 shrink-0">{e.over}.{e.ball}</span>
+                      <span className={`flex-1 truncate ${e.wicket ? "text-red-300 font-bold" : "text-zinc-200"}`}>{e.text || "ball"}</span>
+                      {e.mine && <span className="text-[9px] font-extrabold uppercase text-emerald-400 shrink-0" data-testid="event-mine-tag">your XI</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {view === "card" && (
+            <div className="mt-3" data-testid="live-scorecard">
+              {(live.tables || []).map((t, i) => (
+                <div key={`${t.innings}-${i}`} className="mb-4" data-testid={`innings-table-${i}`}>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 mb-1.5">{t.innings}</div>
+                  <div className="overflow-x-auto rounded-md bg-zinc-900/60">
+                    <table className="w-full text-[11px]">
+                      <thead className="text-zinc-400 uppercase tracking-wider">
+                        <tr><th className="text-left px-3 py-1.5 font-bold">Batter</th><th className="text-right px-2">R</th><th className="text-right px-2">B</th><th className="text-right px-2">4</th><th className="text-right px-2">6</th><th className="text-right px-3">SR</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800">
+                        {(t.batting || []).map((b) => (
+                          <tr key={b.player_id || b.name} className={b.player_id ? "" : "text-zinc-500"} data-testid={`bat-row-${b.player_id || b.name}`}>
+                            <td className="text-left px-3 py-1.5 font-semibold text-zinc-100 truncate max-w-[150px]">
+                              {b.name}{b.out ? "" : "*"}
+                              {b.player_id && (live.my_player_ids || []).includes(b.player_id) && <span className="ml-1 text-[9px] font-extrabold text-emerald-400">YOUR XI</span>}
+                            </td>
+                            <td className="text-right tabular">{b.runs}</td>
+                            <td className="text-right tabular text-zinc-400">{b.balls}</td>
+                            <td className="text-right tabular text-zinc-400">{b.fours}</td>
+                            <td className="text-right tabular text-zinc-400">{b.sixes}</td>
+                            <td className="text-right px-3 tabular text-zinc-300">{b.strike_rate}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {(t.bowling || []).length > 0 && (
+                    <div className="overflow-x-auto rounded-md bg-zinc-900/60 mt-2">
+                      <table className="w-full text-[11px]">
+                        <thead className="text-zinc-400 uppercase tracking-wider">
+                          <tr><th className="text-left px-3 py-1.5 font-bold">Bowler</th><th className="text-right px-2">O</th><th className="text-right px-2">M</th><th className="text-right px-2">R</th><th className="text-right px-2">W</th><th className="text-right px-3">Econ</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800">
+                          {(t.bowling || []).map((b) => (
+                            <tr key={b.player_id || b.name} className={b.player_id ? "" : "text-zinc-500"} data-testid={`bowl-row-${b.player_id || b.name}`}>
+                              <td className="text-left px-3 py-1.5 font-semibold text-zinc-100 truncate max-w-[150px]">
+                                {b.name}
+                                {b.player_id && (live.my_player_ids || []).includes(b.player_id) && <span className="ml-1 text-[9px] font-extrabold text-emerald-400">YOUR XI</span>}
+                              </td>
+                              <td className="text-right tabular">{b.overs}</td>
+                              <td className="text-right tabular text-zinc-400">{b.maidens}</td>
+                              <td className="text-right tabular text-zinc-400">{b.runs}</td>
+                              <td className="text-right tabular font-bold">{b.wickets}</td>
+                              <td className="text-right px-3 tabular text-zinc-300">{b.economy}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <RunRateChart series={live.run_rate || []} />
+              {!live.tables?.length && <p className="text-[11px] text-zinc-400">No player lines received yet.</p>}
+            </div>
+          )}
+
+          {view === "mine" && (
+            <div className="mt-3" data-testid="live-mine">
+              {live.star && (
+                <div className="flex items-center gap-3 bg-orange-500/15 border border-orange-500/40 rounded-md px-3 py-2 mb-3" data-testid="live-star">
+                  <Star size={18} weight="fill" className="text-orange-400" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-orange-300">Top performer</div>
+                    <div className="text-sm font-extrabold truncate">{live.star.name} · {live.star.points} pts</div>
+                  </div>
+                </div>
+              )}
+              {(live.my_positions || []).length === 0 ? (
+                <p className="text-[11px] text-zinc-400">You have no approved entry in this match yet.</p>
+              ) : (
+                <div className="grid sm:grid-cols-2 gap-2">
+                  {live.my_positions.map((p) => (
+                    <div key={p.contest_id} className="bg-zinc-900/70 border border-zinc-800 rounded-md px-3 py-2.5" data-testid={`my-position-${p.contest_id}`}>
+                      <div className="text-[10px] uppercase tracking-widest text-zinc-400 truncate">{p.contest_title || "contest"}</div>
+                      <div className="flex items-baseline gap-2 mt-0.5">
+                        <span className="text-xl font-extrabold tabular" data-testid={`my-rank-${p.contest_id}`}>#{p.rank || "—"}</span>
+                        <span className="text-[11px] text-zinc-400">of {p.entries || "?"}</span>
+                        {!!p.rank_delta && (
+                          <span className={`flex items-center gap-0.5 text-[11px] font-extrabold tabular ${p.rank_delta > 0 ? "text-emerald-400" : "text-red-400"}`} data-testid={`rank-move-${p.contest_id}`}>
+                            {p.rank_delta > 0 ? <CaretUp size={12} weight="fill" /> : <CaretDown size={12} weight="fill" />}
+                            {Math.abs(p.rank_delta)} since last update
+                          </span>
+                        )}
+                        <span className="ml-auto text-sm font-bold text-orange-400 tabular">{p.points ?? 0} pts</span>
+                      </div>
+                      {p.top_points != null && p.points != null && (
+                        <div className="text-[10px] text-zinc-400 mt-1 tabular" data-testid={`gap-${p.contest_id}`}>
+                          {p.points >= p.top_points ? "Leading the contest" : `${(p.top_points - p.points).toFixed(1)} pts off the leader`}
+                        </div>
+                      )}
+                      <div className="text-[10px] text-zinc-500 mt-1 truncate">{p.team_name}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(live.my_players || []).length > 0 && (
+                <div className="mt-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1.5">Your players across saved XIs</div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                    {live.my_players.map((p) => (
+                      <div key={p.player_id} className="flex items-center gap-2 text-[11px] border-b border-zinc-800 py-1" data-testid={`my-player-${p.player_id}`}>
+                        <span className="flex-1 truncate text-zinc-200 font-semibold">{p.name}</span>
+                        <span className="text-zinc-500">{p.role}</span>
+                        <span className="tabular font-extrabold text-orange-400">{p.points}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
       {live?.available && live.updated_at && (
-        <p className="text-[10px] text-zinc-500 mt-2 tabular" data-testid="live-updated">
+        <p className="text-[10px] text-zinc-500 mt-3 tabular" data-testid="live-updated">
           Updated {new Date(live.updated_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
           {live.partial ? " · mid-match totals, final after the scorecard" : ""}
           {live.error ? ` · ${live.error}` : ""}
@@ -360,18 +585,38 @@ function tally(players, ids) {
   const picked = ids.map((id) => players.find((p) => p.id === id)).filter(Boolean);
   const roles = { WK: 0, BAT: 0, AR: 0, BOWL: 0 };
   const sides = {};
-  let credits = 0;
-  picked.forEach((p) => { roles[p.role] = (roles[p.role] || 0) + 1; sides[p.team] = (sides[p.team] || 0) + 1; credits += Number(p.credits || 0); });
-  return { roles, sides, credits: Math.round(credits * 100) / 100, picked };
+  let credits = 0, projection = 0;
+  picked.forEach((p) => { roles[p.role] = (roles[p.role] || 0) + 1; sides[p.team] = (sides[p.team] || 0) + 1; credits += Number(p.credits || 0); projection += Number(p.projection || 0); });
+  return { roles, sides, credits: Math.round(credits * 100) / 100, projection: Math.round(projection), picked };
+}
+
+function builderWarnings(t, ids, captain, vice, sides) {
+  const out = [];
+  ROLES.forEach((r) => {
+    const [lo, hi] = LIMITS[r];
+    const n = t.roles[r] || 0;
+    if (n > hi) out.push(`Too many ${ROLE_LABEL[r].toLowerCase()}s — the cap is ${hi}`);
+    else if (ids.length === TEAM_SIZE && n < lo) out.push(`Needs ${lo} ${ROLE_LABEL[r].toLowerCase()}${lo > 1 ? "s" : ""}, you have ${n}`);
+  });
+  const seats = TEAM_SIZE - ids.length;
+  const owed = ROLES.reduce((a, r) => a + Math.max(0, LIMITS[r][0] - (t.roles[r] || 0)), 0);
+  if (seats >= 0 && owed > seats) out.push(`${seats} seat${seats === 1 ? "" : "s"} left but ${owed} mandatory role${owed === 1 ? "" : "s"} still owed`);
+  if (t.credits > CREDIT_BUDGET) out.push(`Over budget by ${(t.credits - CREDIT_BUDGET).toFixed(1)} credits`);
+  const full = sides.find((s) => (t.sides[s] || 0) >= MAX_PER_SIDE);
+  if (full && seats > 0) out.push(`Already using ${MAX_PER_SIDE} from ${full} — the rest must come from the other side`);
+  if (ids.length === TEAM_SIZE && (!captain || !vice)) out.push("Pick a captain and a different vice-captain");
+  return out;
 }
 
 function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, onSaved }) {
   const { ids, captain, vice, name, editingId } = draft;
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [busy, setBusy] = useState(false);
+  const [infoId, setInfoId] = useState(null);
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
 
   const t = tally(players, ids);
+  const warnings = builderWarnings(t, ids, captain, vice, sides);
   const locked = !!match.locked;
 
   const toggle = (p) => {
@@ -456,7 +701,8 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
                 {side} · {t.sides[side] || 0}/{MAX_PER_SIDE} picked
               </div>
               {(byTeam[side] || []).filter((p) => roleFilter === "ALL" || p.role === roleFilter).map((p) => (
-                <PlayerRow key={p.id} player={p} picked={ids.includes(p.id)} disabled={locked} onToggle={() => toggle(p)} />
+                <PlayerRow key={p.id} player={p} picked={ids.includes(p.id)} disabled={locked}
+                  onToggle={() => toggle(p)} onInfo={() => setInfoId(p.id)} />
               ))}
             </div>
           ))}
@@ -476,6 +722,21 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
             <Stat label="Players" value={`${ids.length}/${TEAM_SIZE}`} ok={ids.length === TEAM_SIZE} testId="stat-players" />
             <Stat label="Credits" value={`${t.credits}/${CREDIT_BUDGET}`} ok={t.credits <= CREDIT_BUDGET} testId="stat-credits" />
             <Stat label="Captain" value={captain ? "Set" : "—"} ok={!!captain} testId="stat-captain" />
+          </div>
+
+          <div className="mt-4" data-testid="credits-meter">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">
+              <span>Credits used</span>
+              <span className="tabular" data-testid="credits-readout">{t.credits} / {CREDIT_BUDGET}</span>
+            </div>
+            <div className="h-2 rounded-full bg-zinc-100 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${t.credits > CREDIT_BUDGET ? "bg-red-500" : t.credits > 95 ? "bg-amber-500" : "bg-emerald-600"}`}
+                style={{ width: `${Math.min(100, (t.credits / CREDIT_BUDGET) * 100)}%` }} data-testid="credits-bar" />
+            </div>
+            <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1 tabular">
+              <span data-testid="credits-left">{Math.max(0, CREDIT_BUDGET - t.credits).toFixed(1)} left · {ids.length}/{TEAM_SIZE} picked</span>
+              <span data-testid="projection-total" className="font-bold text-violet-700">projected {t.projection} pts</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-4 gap-2 mt-3">
@@ -516,6 +777,8 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
                     <button type="button" onClick={() => set({ vice: p.id, captain: captain === p.id ? "" : captain })}
                       className={`w-7 h-7 rounded-full text-[10px] font-extrabold transition-colors ${vice === p.id ? "bg-sky-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-sky-100"}`}
                       data-testid={`vice-${p.id}`}>VC</button>
+                    <button type="button" onClick={() => setInfoId(p.id)} className="p-1 rounded text-zinc-400 hover:text-violet-700" title="Form and value"
+                      data-testid={`leaders-info-${p.id}`}><Eye size={14} weight="bold" /></button>
                   </div>
                 ))}
               </div>
@@ -525,9 +788,23 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
           <Button disabled={!ready || busy} onClick={save} className="mt-5 w-full rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95" data-testid="save-team-btn">
             {locked ? <><Lock size={16} weight="bold" className="mr-1" /> Teams locked</> : busy ? "Saving…" : <><Check size={16} weight="bold" className="mr-1" /> {editingId ? "Update team" : "Save team"}</>}
           </Button>
-          {!ready && !locked && ids.length > 0 && (
+          {!ready && !locked && ids.length > 0 && warnings.length === 0 && (
             <p className="text-[11px] text-zinc-500 mt-2" data-testid="team-hint">
               Pick {TEAM_SIZE} players with valid role counts{captain && vice ? "" : " · set captain and vice-captain"}
+            </p>
+          )}
+          {warnings.length > 0 && (
+            <ul className="mt-3 space-y-1" data-testid="builder-warnings">
+              {warnings.map((w) => (
+                <li key={w} className="flex items-start gap-1.5 text-[11px] font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1" data-testid="builder-warning">
+                  <WarningCircle size={13} className="mt-0.5 shrink-0" /> {w}
+                </li>
+              ))}
+            </ul>
+          )}
+          {warnings.length === 0 && ids.length === TEAM_SIZE && (
+            <p className="mt-3 flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-1" data-testid="builder-ok">
+              <CheckCircle size={14} /> Legal XI with {(CREDIT_BUDGET - t.credits).toFixed(1)} credits spare
             </p>
           )}
         </div>
@@ -548,6 +825,8 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
             </div>
           </div>
         )}
+
+        {infoId && <PlayerSheet playerId={infoId} onClose={() => setInfoId(null)} />}
       </div>
     </div>
   );
@@ -562,32 +841,129 @@ function Stat({ label, value, ok, testId }) {
   );
 }
 
-function PlayerRow({ player, picked, disabled, onToggle }) {
+function PlayerRow({ player, picked, disabled, onToggle, onInfo }) {
   const live = player.points != null && player.points !== 0;
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={disabled}
-      className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors disabled:opacity-50 ${picked ? "bg-emerald-50" : "hover:bg-zinc-50"}`}
-      data-testid={`player-row-${player.id}`}
-    >
-      <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${picked ? "bg-emerald-600 border-emerald-600 text-white" : "border-zinc-300 text-transparent"}`}>
-        <Check size={12} weight="bold" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm font-bold text-zinc-900 truncate">{player.name}{!player.playing && <span className="ml-1.5 text-[10px] font-bold text-red-600 uppercase">not playing</span>}</span>
-        <span className={`inline-block mt-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${ROLE_SKIN[player.role]}`}>{ROLE_LABEL[player.role]}</span>
-      </span>
-      {live && <span className="text-[11px] font-extrabold text-orange-700 tabular" data-testid={`player-points-${player.id}`}>{player.points} pts</span>}
-      <span className="text-xs font-extrabold text-zinc-600 tabular shrink-0" data-testid={`player-credits-${player.id}`}>{player.credits}</span>
-    </button>
+    <div className={`flex items-center gap-1 px-4 py-1 transition-colors ${picked ? "bg-emerald-50" : "hover:bg-zinc-50"}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={disabled}
+        className="flex-1 flex items-center gap-3 text-left disabled:opacity-50"
+        data-testid={`player-row-${player.id}`}
+      >
+        <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${picked ? "bg-emerald-600 border-emerald-600 text-white" : "border-zinc-300 text-transparent"}`}>
+          <Check size={12} weight="bold" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold text-zinc-900 truncate">{player.name}{!player.playing && <span className="ml-1.5 text-[10px] font-bold text-red-600 uppercase">not playing</span>}</span>
+          <span className={`inline-block mt-0.5 text-[10px] font-bold uppercase px-1.5 py-0.5 rounded border ${ROLE_SKIN[player.role]}`}>{ROLE_LABEL[player.role]}</span>
+        </span>
+        {player.projection > 0 && <span className="text-[10px] font-bold text-violet-700 tabular shrink-0" data-testid={`player-proj-${player.id}`}>{player.projection} proj</span>}
+        {live && <span className="text-[11px] font-extrabold text-orange-700 tabular" data-testid={`player-points-${player.id}`}>{player.points} pts</span>}
+        <span className="text-xs font-extrabold text-zinc-600 tabular shrink-0" data-testid={`player-credits-${player.id}`}>{player.credits}</span>
+      </button>
+      <button type="button" onClick={onInfo}
+        className="p-1.5 rounded-md text-zinc-400 hover:text-violet-700 hover:bg-violet-50 shrink-0" title="Form, value and role rank"
+        data-testid={`player-info-${player.id}`}>
+        <Eye size={15} weight="bold" />
+      </button>
+    </div>
+  );
+}
+
+function PlayerSheet({ playerId, onClose }) {
+  const [d, setD] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    setD(null); setError("");
+    api.get(`/players/${playerId}/insight`)
+      .then(({ data }) => { if (alive) setD(data); })
+      .catch((e) => { if (alive) setError(e?.response?.data?.detail || "Could not load this player"); });
+    return () => { alive = false; };
+  }, [playerId]);
+
+  const p = d?.player;
+  const verdictSkin = {
+    "good value": "bg-emerald-50 border-emerald-200 text-emerald-800",
+    fair: "bg-zinc-50 border-zinc-200 text-zinc-700",
+    expensive: "bg-amber-50 border-amber-200 text-amber-800",
+    "no projection set": "bg-zinc-50 border-zinc-200 text-zinc-500",
+  };
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-lg" data-testid="player-sheet">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-xl font-extrabold tracking-tight">
+            {p?.name || "Player"}
+            {p && <span className="ml-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">{p.team} · {ROLE_LABEL[p.role]}</span>}
+          </DialogTitle>
+          <DialogDescription>{d?.match ? `${d.match.label}${d.match.venue ? ` · ${d.match.venue}` : ""}` : "Selection help"}</DialogDescription>
+        </DialogHeader>
+
+        {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2" data-testid="sheet-error">{error}</div>}
+        {!d && !error && <div className="text-sm text-zinc-500 py-6 text-center">Loading player…</div>}
+
+        {d && (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              <Stat label="Credits" value={d.player.credits} ok testId="sheet-credits" />
+              <Stat label="Projection" value={d.player.projection || "—"} ok={!!d.player.projection} testId="sheet-projection" />
+              <Stat label="Pts / credit" value={d.value_per_credit || "—"} ok={d.value_per_credit > 0} testId="sheet-value" />
+            </div>
+            <div className={`mt-3 flex items-center gap-2 border rounded-md px-3 py-2 text-xs font-bold ${verdictSkin[d.value_verdict] || verdictSkin.fair}`} data-testid="sheet-verdict">
+              {d.value_verdict === "good value" ? <CheckCircle size={14} /> : <WarningCircle size={14} />}
+              {d.value_verdict === "no projection set"
+                ? "The organiser has not projected this player — Auto-pick falls back to credits."
+                : `${d.value_verdict} · squad median ${d.squad_median_value} pts per credit`}
+            </div>
+            {!!d.role_rank && (
+              <p className="text-[11px] text-zinc-600 mt-2" data-testid="sheet-role-rank">
+                Ranked <b className="tabular">{d.role_rank}</b> of {d.role_peers} {ROLE_LABEL[d.player.role].toLowerCase()}s on projected points in this match.
+              </p>
+            )}
+            <div className="mt-4">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">
+                Recent form {d.innings ? `· ${d.innings} innings, avg ${d.avg_points}, best ${d.best_points}` : ""}
+              </div>
+              {(!d.form || d.form.length === 0) ? (
+                <p className="text-[11px] text-zinc-500 border border-dashed border-zinc-200 rounded-md px-3 py-2" data-testid="sheet-no-form">
+                  No completed scorecard for this player yet — projection and credits are all we have.
+                </p>
+              ) : (
+                <div className="divide-y divide-zinc-100 border border-zinc-200 rounded-md overflow-hidden">
+                  {d.form.map((f) => (
+                    <div key={f.match_id} className="flex items-center gap-2 px-3 py-1.5 text-xs" data-testid={`sheet-form-${f.match_id}`}>
+                      <span className="flex-1 truncate font-semibold text-zinc-800">{f.match}</span>
+                      <span className="text-zinc-500 tabular">{f.runs}*</span>
+                      <span className="text-zinc-500 tabular">{f.wickets} wkt</span>
+                      <span className="font-extrabold text-orange-700 tabular">{f.points} pts</span>
+                      {!f.final && <span className="text-[9px] font-extrabold uppercase text-amber-700">live</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <p className="text-[10px] text-zinc-400 mt-3">
+              Projections are set by the organiser and also drive Auto-pick. Points come from the published scorecard.
+            </p>
+          </>
+        )}
+        <div className="flex justify-end mt-4">
+          <Button onClick={onClose} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold">Done</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function MyTeams({ teams, players, match, onReload }) {
   const [openId, setOpenId] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [cmp, setCmp] = useState(null);
+  const [a, setA] = useState(teams[0] ? teams[0].id : "");
+  const [b, setB] = useState(teams[1] ? teams[1].id : "");
   if (!teams.length) {
     return <div className="bg-white border border-zinc-200 rounded-lg p-8 text-center text-sm text-zinc-500" data-testid="no-teams">No teams yet — build your XI in the Build team tab.</div>;
   }
@@ -625,6 +1001,23 @@ function MyTeams({ teams, players, match, onReload }) {
   };
   return (
     <div className="grid md:grid-cols-2 gap-4">
+      {teams.length > 1 && (
+        <div className="md:col-span-2 bg-white border border-violet-200 rounded-lg p-4 flex flex-wrap items-center gap-2" data-testid="compare-panel">
+          <ArrowsLeftRight size={16} weight="bold" className="text-violet-600" />
+          <span className="text-sm font-bold text-zinc-900">Compare two of your XIs</span>
+          <select value={a} onChange={(e) => setA(e.target.value)} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs font-bold" data-testid="compare-a">
+            {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+          </select>
+          <span className="text-xs text-zinc-400 font-bold">vs</span>
+          <select value={b} onChange={(e) => setB(e.target.value)} className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs font-bold" data-testid="compare-b">
+            {teams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name}</option>)}
+          </select>
+          <Button size="sm" disabled={a === b || !a || !b} onClick={() => setCmp({ a, b })}
+            className="ml-auto rounded-full bg-violet-600 hover:bg-violet-700 text-white font-bold active:scale-95" data-testid="compare-btn">
+            Compare
+          </Button>
+        </div>
+      )}
       {teams.map((tm) => {
         const rows = (tm.players || []).filter(Boolean);
         const expanded = openId === tm.id;
@@ -672,7 +1065,88 @@ function MyTeams({ teams, players, match, onReload }) {
           </div>
         );
       })}
+      {cmp && <CompareDialog pair={cmp} teams={teams} onClose={() => setCmp(null)} />}
     </div>
+  );
+}
+
+function CompareDialog({ pair, teams, onClose }) {
+  const [d, setD] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api.get(`/fantasy/teams/${pair.a}/compare/${pair.b}`)
+      .then(({ data }) => { if (alive) setD(data); })
+      .catch((e) => { if (alive) setError(e?.response?.data?.detail || "Could not compare these teams"); });
+    return () => { alive = false; };
+  }, [pair.a, pair.b]);
+
+  const nameOf = (id) => (teams.find((t) => t.id === id) || {}).name || "Team";
+  const side = (t) => (
+    <div className="flex-1 bg-zinc-50 border border-zinc-200 rounded-md px-3 py-2" data-testid={`cmp-side-${t.id}`}>
+      <div className="text-sm font-extrabold text-zinc-900 truncate">{t.name}</div>
+      <div className="text-[11px] text-zinc-500 tabular">{t.credits_used} credits · C {t.captain || "—"} · VC {t.vice_captain || "—"}</div>
+      <div className="mt-1 text-lg font-heading font-extrabold tabular text-zinc-950" data-testid={`cmp-points-${t.id}`}>
+        {t.points == null ? <span className="text-xs text-zinc-400 font-bold">points after the scorecard</span> : `${t.points} pts`}
+      </div>
+    </div>
+  );
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" data-testid="compare-dialog">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-xl font-extrabold tracking-tight flex items-center gap-2">
+            <ArrowsLeftRight size={20} weight="bold" className="text-violet-600" /> {nameOf(pair.a)} vs {nameOf(pair.b)}
+          </DialogTitle>
+          <DialogDescription>
+            {d ? `${d.match.label} · ${d.shared_count} picks in common, ${d.differ_count} differ` : "Where your two teams part ways"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {error && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2" data-testid="cmp-error">{error}</div>}
+        {!d && !error && <div className="text-sm text-zinc-500 py-6 text-center">Comparing…</div>}
+
+        {d && (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {side(d.team_a)}
+              {side(d.team_b)}
+            </div>
+            {d.swing != null && (
+              <p className={`mt-3 text-xs font-bold rounded-md px-3 py-2 border ${d.swing === 0 ? "bg-zinc-50 border-zinc-200 text-zinc-700" : d.swing > 0 ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-900"}`} data-testid="cmp-swing">
+                {d.swing === 0 ? "Dead heat — both XIs scored the same." : `${nameOf(d.swing > 0 ? pair.a : pair.b)} is ahead by ${Math.abs(d.swing)} pts`}
+              </p>
+            )}
+            <div className="mt-4">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Players only in one XI</div>
+              {d.differences.length === 0 ? (
+                <p className="text-[11px] text-zinc-500">Both teams are identical.</p>
+              ) : (
+                <div className="divide-y divide-zinc-100 border border-zinc-200 rounded-md overflow-hidden">
+                  {d.differences.map((r) => (
+                    <div key={r.player_id} className="flex items-center gap-2 px-3 py-2 text-xs" data-testid={`cmp-diff-${r.player_id}`}>
+                      <span className={`w-6 h-6 rounded-full text-[10px] font-extrabold flex items-center justify-center ${r.in === "A" ? "bg-violet-100 text-violet-800" : "bg-sky-100 text-sky-800"}`}>{r.in}</span>
+                      <span className="flex-1 truncate font-bold text-zinc-800">{r.name}</span>
+                      <span className="text-[10px] text-zinc-500 uppercase">{r.role} · {r.team}</span>
+                      {!!r.captain_of && <span className="text-[9px] font-extrabold text-amber-700">C{r.captain_of === "AB" ? " (both)" : ` in ${r.captain_of}`}</span>}
+                      {!!r.vice_of && <span className="text-[9px] font-extrabold text-sky-700">VC in {r.vice_of}</span>}
+                      <span className="tabular font-extrabold text-orange-700 w-10 text-right">{d.final ? r.points : "—"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-zinc-500 mt-2">
+                {d.final ? "Points are the base contribution of each player (captain and vice-captain multipliers are already counted in the totals above)." : "Totals and per-player points appear once the organiser posts the scorecard."}
+              </p>
+            </div>
+          </>
+        )}
+        <div className="flex justify-end mt-4">
+          <Button onClick={onClose} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold">Close</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -834,6 +1308,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
 function LeaderboardDialog({ contest, onClose }) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(true);
+  const [openRow, setOpenRow] = useState(null);
   const load = async () => {
     setBusy(true);
     try {
@@ -875,25 +1350,86 @@ function LeaderboardDialog({ contest, onClose }) {
             <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 mb-3 text-sm" data-testid="my-standing">
               <span className="font-bold text-emerald-900">Your position</span>
               {mine ? (
-                <span className="text-emerald-900 tabular">
-                  Rank <b>#{mine.rank}</b> of {rows.length} · <b>{mine.points}</b> pts{mine.prize > 0 && <> · <b className="text-orange-700">{money(mine.prize)}</b></>}
+                <span className="text-emerald-900 tabular" data-testid="my-standing-rank">
+                  Rank <b>#{mine.rank}</b> of {data?.contest?.live_entries || rows.length} · <b>{mine.points}</b> pts
+                  {!settled && !!mine.rank_delta && (
+                    <span className={`ml-1.5 inline-flex items-center gap-0.5 font-extrabold ${mine.rank_delta > 0 ? "text-emerald-700" : "text-red-600"}`} data-testid="my-standing-move">
+                      {mine.rank_delta > 0 ? <CaretUp size={11} weight="fill" /> : <CaretDown size={11} weight="fill" />}{Math.abs(mine.rank_delta)}
+                    </span>
+                  )}
+                  {mine.prize > 0 && <> · <b className="text-orange-700">{money(mine.prize)}</b></>}
                 </span>
               ) : <span className="text-emerald-700">Not entered yet</span>}
             </div>
             <div className="divide-y divide-zinc-100 border border-zinc-200 rounded-lg overflow-hidden">
-              {rows.map((r) => (
-                <div key={r.entry_id} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${r.is_me ? "bg-emerald-50" : ""}`} data-testid={`lb-row-${r.rank}`}>
-                  <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-extrabold tabular ${r.rank === 1 ? "bg-amber-400 text-amber-950" : r.rank === 2 ? "bg-zinc-300 text-zinc-700" : r.rank === 3 ? "bg-orange-200 text-orange-800" : "bg-zinc-100 text-zinc-600"}`}>
-                    {r.rank}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-bold text-zinc-900 truncate">{r.is_me ? `${r.team_name || "Your team"} (you)` : r.user_name}</span>
-                    <span className="block text-[11px] text-zinc-500 truncate">{r.team_name || ""}</span>
-                  </span>
-                  {r.prize > 0 && <span className="text-[11px] font-extrabold text-orange-700 tabular">{money(r.prize)}</span>}
-                  <span className="font-heading font-extrabold text-zinc-950 tabular w-14 text-right" data-testid={`lb-points-${r.rank}`}>{r.points}</span>
-                </div>
-              ))}
+              {rows.map((r) => {
+                const open = openRow === r.entry_id;
+                const prizeRow = (data?.contest?.prize_breakdown || []).find((p) => Number(p.rank) === r.rank);
+                return (
+                  <div key={r.entry_id} className={r.is_me ? "bg-emerald-50" : ""}>
+                    <div className="flex items-center gap-3 px-4 py-2.5 text-sm" data-testid={`lb-row-${r.rank}`}>
+                      <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-extrabold tabular ${r.rank === 1 ? "bg-amber-400 text-amber-950" : r.rank === 2 ? "bg-zinc-300 text-zinc-700" : r.rank === 3 ? "bg-orange-200 text-orange-800" : "bg-zinc-100 text-zinc-600"}`}>
+                        {r.rank}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-bold text-zinc-900 truncate">{r.is_me ? `${r.team_name || "Your team"} (you)` : r.user_name}</span>
+                        <span className="block text-[11px] text-zinc-500 truncate">
+                          {r.team_name || ""}
+                          {!!r.rank_delta && !settled && (
+                            <span className={`ml-1.5 inline-flex items-center gap-0.5 font-extrabold tabular ${r.rank_delta > 0 ? "text-emerald-700" : "text-red-600"}`} data-testid={`lb-move-${r.rank}`}>
+                              {r.rank_delta > 0 ? <CaretUp size={11} weight="fill" /> : <CaretDown size={11} weight="fill" />}
+                              {Math.abs(r.rank_delta)}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      {r.prize > 0 && <span className="text-[11px] font-extrabold text-orange-700 tabular">{money(r.prize)}</span>}
+                      <span className="font-heading font-extrabold text-zinc-950 tabular w-14 text-right" data-testid={`lb-points-${r.rank}`}>{r.points}</span>
+                      {r.breakdown && r.breakdown.length > 0 && (
+                        <button type="button" onClick={() => setOpenRow(open ? null : r.entry_id)}
+                          className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 shrink-0" data-testid={`lb-toggle-${r.rank}`}>
+                          {open ? "hide" : "points"}
+                        </button>
+                      )}
+                    </div>
+                    {open && (
+                      <div className="px-4 pb-3">
+                        {prizeRow && (
+                          <p className="text-[11px] text-zinc-600 mb-1.5" data-testid={`lb-prize-rule-${r.rank}`}>
+                            Rank {r.rank} pays {money(prizeRow.amount)} · you scored {r.points} pts
+                          </p>
+                        )}
+                        <div className="grid sm:grid-cols-2 gap-x-4 border border-zinc-200 rounded-md overflow-hidden bg-white" data-testid={`lb-breakdown-${r.rank}`}>
+                          {r.breakdown.map((b) => {
+                            const parts = Object.entries(b.components || {}).filter(([, v]) => Number(v) !== 0)
+                              .sort((x, y) => Math.abs(y[1]) - Math.abs(x[1])).slice(0, 4);
+                            return (
+                              <div key={b.player_id} className="px-3 py-1.5 text-xs border-b border-zinc-100" data-testid={`lb-bd-${b.player_id}`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="flex-1 truncate text-zinc-800 font-semibold">{b.name || "Player"}</span>
+                                  {b.is_captain && <span className="text-[10px] font-extrabold text-amber-700">C ×2</span>}
+                                  {b.is_vice_captain && <span className="text-[10px] font-extrabold text-sky-700">VC ×1.5</span>}
+                                  <span className="text-zinc-400 tabular w-8 text-right">{b.base}</span>
+                                  <span className="font-extrabold text-zinc-900 tabular w-9 text-right">{b.points}</span>
+                                </div>
+                                {parts.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {parts.map(([k, v]) => (
+                                      <span key={k} className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${Number(v) < 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-zinc-50 text-zinc-600 border-zinc-200"}`} data-testid={`lb-part-${b.player_id}-${k}`}>
+                                        {prettyComponent(k)} {Number(v) > 0 ? `+${v}` : v}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             {mine && mine.breakdown && mine.breakdown.length > 0 && (
               <div className="mt-4">

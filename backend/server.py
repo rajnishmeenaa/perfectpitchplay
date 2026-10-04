@@ -10,6 +10,7 @@ import re
 import io
 import csv
 import asyncio
+import hashlib
 import logging
 import uuid
 import requests
@@ -517,7 +518,8 @@ def team_points(player_points: dict, team: dict, names: Optional[dict] = None) -
     vc = team.get("vice_captain_id")
     rows = []
     for pid in team.get("player_ids", []):
-        base = float((player_points.get(pid) or {}).get("total", 0))
+        entry = player_points.get(pid) or {}
+        base = float(entry.get("total", 0))
         mult = 2.0 if pid == c else (1.5 if pid == vc else 1.0)
         info = names.get(pid) or {}
         rows.append({
@@ -525,9 +527,11 @@ def team_points(player_points: dict, team: dict, names: Optional[dict] = None) -
             "name": info.get("name"),
             "team": info.get("team"),
             "role": info.get("role"),
+            "credits": info.get("credits"),
             "base": round(base, 2),
             "multiplier": mult,
             "points": round(base * mult, 2),
+            "components": entry.get("components") or {},
             "is_captain": pid == c,
             "is_vice_captain": pid == vc,
         })
@@ -589,6 +593,7 @@ async def get_joinable_contest(contest_id: str, user: dict) -> dict:
     contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
     if not contest:
         raise HTTPException(status_code=404, detail="Contest not found")
+    await enforce_play_safety(user, float(contest.get("entry_fee") or 0))
     if contest.get("status") != "open":
         raise HTTPException(status_code=400, detail="Contest not open")
     mt = contest.get("match_time")
@@ -1071,6 +1076,7 @@ async def rzp_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
 # ---------- Wallet top-up (Razorpay) ----------
 @api_router.post("/wallet/topup/order")
 async def wallet_topup_order(body: WalletTopupOrderBody, user=Depends(get_current_user)):
+    await enforce_deposit_safety(user, float(body.amount))
     if not rzp_client:
         raise HTTPException(status_code=503, detail="Online payments not configured")
     if body.amount < 1:
@@ -1125,6 +1131,7 @@ async def fulfill_topup_order(razorpay_order_id: str, payment_id: str, source: s
         {"razorpay_order_id": razorpay_order_id},
         {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "topup_credited": True}},
     )
+    await add_deposit(order["user_id"], amount)
     await push_notification(
         order["user_id"], "topup", "Wallet topped up",
         f"{inr(amount)} has been added to your wallet.",
@@ -1457,6 +1464,9 @@ async def create_withdrawal(body: WithdrawalCreate, user=Depends(get_current_use
         raise HTTPException(status_code=400, detail="Enter a valid UPI ID (for example name@bank)")
     if not user.get("mobile"):
         raise HTTPException(status_code=400, detail="Add your mobile number before withdrawing")
+    safety = await get_safety_settings()
+    if safety["kyc_required_for_payouts"] and (user.get("kyc") or {}).get("status") != "verified":
+        raise HTTPException(status_code=402, detail="Verify your PAN in Play responsibly before withdrawing")
     balance = user.get("wallet_balance", 0.0)
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
@@ -1988,8 +1998,10 @@ async def admin_get_scorecard(match_id: str, admin=Depends(require_admin)):
 async def build_leaderboard(contest: dict, entries: list) -> list:
     """Rank fantasy entries by team points (Captain 2x / VC 1.5x applied)."""
     match_id = contest.get("match_id")
-    scores = await db.player_scores.find({"match_id": match_id}, {"_id": 0, "player_id": 1, "points": 1}).to_list(300)
-    player_points = {s["player_id"]: {"total": s.get("points", 0)} for s in scores}
+    scores = await db.player_scores.find({"match_id": match_id},
+                                        {"_id": 0, "player_id": 1, "points": 1, "components": 1}).to_list(300)
+    player_points = {s["player_id"]: {"total": s.get("points", 0), "components": s.get("components") or {}}
+                     for s in scores}
     teams = await db.fantasy_teams.find({"match_id": match_id}, {"_id": 0}).to_list(2000)
     teams_by_id = {t["id"]: t for t in teams}
     names = {p["id"]: p for p in await get_match_players(match_id)}
@@ -2006,6 +2018,7 @@ async def build_leaderboard(contest: dict, entries: list) -> list:
             "team_name": e.get("team_name") or (team or {}).get("name"),
             "points": tp["total"],
             "breakdown": tp["rows"],
+            "rank_prev": e.get("fantasy_rank_prev"),
             "entry_status": e.get("status"),
             "prize": e.get("winner_prize", 0) if e.get("status") == "won" else 0,
             "created_at": e.get("created_at"),
@@ -2273,8 +2286,10 @@ async def fantasy_leaderboard(contest_id: str, user=Depends(get_current_user)):
     mine = user["role"] == "admin"
     if settled:
         # Final standings store only the totals; recompute each XI breakdown for the per-team view.
-        scores = await db.player_scores.find({"match_id": contest.get("match_id")}, {"_id": 0, "player_id": 1, "points": 1}).to_list(300)
-        player_points = {s["player_id"]: {"total": s.get("points", 0)} for s in scores}
+        scores = await db.player_scores.find({"match_id": contest.get("match_id")},
+                                            {"_id": 0, "player_id": 1, "points": 1, "components": 1}).to_list(300)
+        player_points = {s["player_id"]: {"total": s.get("points", 0), "components": s.get("components") or {}}
+                         for s in scores}
         names = {p["id"]: p for p in await get_match_players(contest.get("match_id"))}
         teams_by_id = {t["id"]: t for t in await db.fantasy_teams.find({"match_id": contest.get("match_id")}, {"_id": 0}).to_list(2000)}
         for r in rows:
@@ -2283,6 +2298,8 @@ async def fantasy_leaderboard(contest_id: str, user=Depends(get_current_user)):
     for r in rows:
         is_me = r["user_id"] == user["id"]
         r["is_me"] = is_me
+        prev = r.get("rank_prev")
+        r["rank_delta"] = (prev - r["rank"]) if (prev and r.get("rank")) else 0
         if not (is_me or mine or settled):
             r.pop("breakdown", None)
         if not is_me and not mine:
@@ -2292,7 +2309,8 @@ async def fantasy_leaderboard(contest_id: str, user=Depends(get_current_user)):
         "contest": {"id": contest["id"], "title": contest.get("title"), "entry_fee": contest.get("entry_fee"),
                     "prize_pool": contest.get("prize_pool"), "prize_breakdown": contest.get("prize_breakdown") or [],
                     "status": contest.get("status"), "settled_at": contest.get("settled_at"),
-                    "participants_count": len(rows)},
+                    "participants_count": len(rows), "live_entries": contest.get("live_entries") or len(rows),
+                    "live_top_points": contest.get("live_top_points"), "live_ranked_at": contest.get("live_ranked_at")},
         "match": {"id": match.get("id"), "team_a_short": match.get("team_a_short"), "team_b_short": match.get("team_b_short"),
                   "team_a_name": match.get("team_a_name"), "team_b_name": match.get("team_b_name"),
                   "status": match.get("status"), "start_time": match.get("start_time"), "locked": match_locked(match) if match else False},
@@ -2654,6 +2672,220 @@ async def admin_import_scorecard(match_id: str, body: ScoreImportBody, admin=Dep
 
 # ---------- Live match centre ----------
 LIVE_STALE_SECONDS = 45  # the in-app ticker re-pulls the provider at most this often
+LIVE_EVENT_LIMIT = 90    # balls kept for the ticker
+
+
+def _resolve_player(name: str, squad: list) -> tuple:
+    """Map a provider spelling onto our squad. Returns (player_id or None, display name, team, role)."""
+    best, best_score = None, 0.0
+    for p in squad:
+        sc = _name_score(name, p["name"])
+        if sc > best_score:
+            best, best_score = p, sc
+    if best and best_score >= 0.75:
+        return best["id"], best["name"], best.get("team"), best.get("role")
+    return None, str(name or "").strip(), None, None
+
+
+def _event_row(item, squad: list) -> Optional[dict]:
+    """One ball, whatever shape the provider used. Returns None when nothing is usable."""
+    if isinstance(item, str):
+        text = item.strip()
+        if not text:
+            return None
+        # many providers send bare strings like "4 Rohit Sharma b Bumrah" or "WIDE, 2 runs"
+        lead = re.match(r"^\s*(\d+)\b", text)
+        item = {"text": text, "runs": lead.group(1) if lead else None}
+    if not isinstance(item, dict):
+        return None
+    text = str(item.get("text") or item.get("long_text") or item.get("description") or
+               item.get("ball_text") or item.get("event") or "").strip()
+    batter_raw = item.get("batsman") or item.get("batter") or item.get("striker") or ""
+    bowler_raw = item.get("bowler") or item.get("bowlerName") or ""
+    if isinstance(batter_raw, dict):
+        batter_raw = batter_raw.get("name") or batter_raw.get("player") or ""
+    if isinstance(bowler_raw, dict):
+        bowler_raw = bowler_raw.get("name") or bowler_raw.get("player") or ""
+    runs = item.get("runs")
+    if runs is None:
+        runs = item.get("score") or item.get("shot_runs")
+    wicket = item.get("wicket")
+    if isinstance(wicket, str):
+        wicket = wicket.strip().lower() not in ("", "no", "false", "0")
+    kind = str(item.get("kind") or item.get("type") or item.get("event_type") or "").strip().lower()
+    over = item.get("over")
+    if isinstance(over, dict):
+        over = over.get("number") or over.get("over")
+    ball = item.get("ball")
+    if isinstance(ball, dict):
+        ball = ball.get("number") or ball.get("ball")
+    if not text and batter_raw is None and bowler_raw is None and runs is None and not wicket:
+        return None
+    b_id, b_name, team, _role = _resolve_player(batter_raw or "", squad)
+    if not b_name and text:  # the ticker text is the only clue — guess the side from the bowler
+        _x, _y, team, _z = _resolve_player(bowler_raw or "", squad)
+        if team:
+            team = {"IND": "AUS"}.get(team) or team
+    p_id, p_name, _pt, _pr = _resolve_player(bowler_raw or "", squad)
+    try:
+        runs_n = int(_num(runs))
+    except (TypeError, ValueError):
+        runs_n = 0
+    low = text.lower()
+    boundary = runs_n >= 4 or "four" in low or "six" in low
+    return {
+        "over": str(over if over is not None else "").strip(),
+        "ball": str(ball if ball is not None else "").strip(),
+        "text": text or (f"{b_name} {runs_n} run{'s' if runs_n != 1 else ''}" if runs_n else ""),
+        "runs": runs_n,
+        "wicket": bool(wicket) or "out" in kind or "wicket" in kind or bool(re.search(r"\b(out|b |c |lbw|st |run ?out)\b", low)),
+        "boundary": bool(boundary) or bool(kind in ("four", "six", "boundary", "6", "4")),
+        "kind": kind or ("wicket" if wicket else ("boundary" if boundary else "run")),
+        "batter": b_name or None, "batter_id": b_id,
+        "bowler": p_name or None, "bowler_id": p_id,
+        "team": team, "inning": str(item.get("inns") or item.get("innings") or "").strip(),
+    }
+
+
+def extract_live_events(payload: dict, squad: list) -> list:
+    """Normalise the first ball-by-ball shape the provider actually filled in."""
+    candidates = [
+        payload.get("ball_by_ball"),
+        (payload.get("info") or {}).get("ball_by_ball"),
+        payload.get("events"),
+        (payload.get("data") or {}).get("events") if isinstance(payload.get("data"), dict) else None,
+    ]
+    raw = next((c for c in candidates if isinstance(c, list) and c), [])
+    rows = [r for r in (_event_row(item, squad) for item in raw) if r]
+    return rows[-LIVE_EVENT_LIMIT:]
+
+
+async def fetch_live_events(external_id: str, api_key: str, squad: list) -> list:
+    """Ball-by-ball is a separate provider call. If it is missing we simply have no ticker."""
+    for endpoint, params in (("match_bball", {"match_id": external_id}),
+                             ("ballbyball", {"id": external_id, "unique_id": external_id})):
+        try:
+            data = await asyncio.to_thread(cric_call, endpoint, params, api_key)
+        except HTTPException:
+            continue
+        body = data.get("data") if "data" in data else data
+        if isinstance(body, dict):
+            body = body.get("ball_by_ball") or body.get("events") or body.get("data") or []
+        rows = extract_live_events({"ball_by_ball": body if isinstance(body, list) else []}, squad)
+        if rows:
+            return rows
+    return []
+
+
+def _sr(runs, balls) -> float:
+    return round(100.0 * float(runs) / float(balls), 1) if balls else 0.0
+
+
+def _econ(runs, balls) -> float:
+    return round(float(runs) * 6.0 / float(balls), 2) if balls else 0.0
+
+
+def innings_tables(payload: dict, lines: list, squad: list, innings: list) -> list:
+    """Per-innings batting/bowling tables.
+
+    Prefers the provider's own per-innings structure; falls back to the squad-mapped
+    stat lines we already trust, so the table works on the fantasy feed too.
+    """
+    raw = payload.get("scorecard")
+    tables = []
+    if isinstance(raw, list) and raw and isinstance(raw[0], dict) and ("batting" in raw[0] or "bowling" in raw[0]):
+        for inns in raw:
+            label = str(inns.get("inns") or inns.get("name") or inns.get("innings") or "").strip()
+            bats, bowls = [], []
+            for b in inns.get("batting") or []:
+                name = _player_name(b.get("batsman") or b.get("player") or b.get("name"))
+                if not name:
+                    continue
+                pid, disp, team, role = _resolve_player(name, squad)
+                r, bl = int(_num(b.get("runs"))), int(_num(b.get("balls")))
+                disc = str(b.get("dismissalText") or b.get("dismissal") or "")
+                if isinstance(b.get("dismissal"), dict):
+                    disc = str(b["dismissal"].get("text") or "")
+                bats.append({"player_id": pid, "name": disp, "team": team, "role": role, "runs": r, "balls": bl,
+                             "fours": int(_num(b.get("fours") or b.get("4s"))), "sixes": int(_num(b.get("sixes") or b.get("6s"))),
+                             "strike_rate": _sr(r, bl), "out": bool(disc) and "not out" not in disc.lower(),
+                             "dismissal": disc.strip() or None})
+            for x in inns.get("bowling") or []:
+                name = _player_name(x.get("bowler") or x.get("player") or x.get("name"))
+                if not name:
+                    continue
+                pid, disp, team, role = _resolve_player(name, squad)
+                ov = x.get("overs")
+                bl = overs_to_balls(ov)
+                rn, wk = int(_num(x.get("runs") or x.get("conceded"))), int(_num(x.get("wickets")))
+                bowls.append({"player_id": pid, "name": disp, "team": team, "role": role, "overs": str(ov or ""),
+                              "runs": rn, "wickets": wk, "maidens": int(_num(x.get("maidens"))),
+                              "economy": _econ(rn, bl)})
+            tables.append({"innings": label, "batting": bats, "bowling": bowls})
+        return tables
+
+    by_id = {p["id"]: p for p in squad}
+    sides: dict = {}
+    for line in lines:
+        p = by_id.get(line.get("player_id"))
+        if not p:
+            continue
+        side = sides.setdefault(p["team"], {"batting": [], "bowling": []})
+        r, bl = int(line.get("runs") or 0), int(line.get("balls") or 0)
+        if r or bl or (line.get("played") and p.get("role") != "BOWL"):
+            side["batting"].append({"player_id": p["id"], "name": p["name"], "team": p["team"], "role": p.get("role"),
+                                    "runs": r, "balls": bl, "fours": int(line.get("fours") or 0),
+                                    "sixes": int(line.get("sixes") or 0), "strike_rate": _sr(r, bl),
+                                    "out": bool(line.get("out")), "dismissal": None})
+        bb, rc, wk = int(line.get("balls_bowled") or 0), int(line.get("runs_conceded") or 0), int(line.get("wickets") or 0)
+        if bb or wk:
+            side["bowling"].append({"player_id": p["id"], "name": p["name"], "team": p["team"], "role": p.get("role"),
+                                   "overs": f"{bb // 6}.{bb % 6}", "runs": rc, "wickets": wk,
+                                   "maidens": int(line.get("maidens") or 0), "economy": _econ(rc, bb)})
+    for row in innings or []:
+        label = str(row.get("innings") or "").strip()
+        short = next((s for s in sides if s and s.lower()[:3] in label.lower()), None)
+        if short and sides[short]:
+            tables.append({"innings": label, **sides.pop(short)})
+    for team, side in sides.items():
+        if side["batting"] or side["bowling"]:
+            tables.append({"innings": f"{team} innings", **side})
+    for t in tables:
+        t["batting"].sort(key=lambda b: -b["runs"])
+        t["bowling"].sort(key=lambda b: (-b["wickets"], b["economy"]))
+    return tables
+
+
+def run_rate_series(events: list, innings: list) -> list:
+    """Cumulative runs/wickets per over for the graph — from the ticker when we have one."""
+    pts, acc_r, acc_w = [], 0, 0
+    for ev in events:
+        raw_over = ev.get("over")
+        if raw_over is None or str(raw_over).strip() == "":
+            continue
+        try:
+            ov = int(str(raw_over).split(".")[0])
+        except (TypeError, ValueError):
+            continue
+        if ov < 0:
+            continue
+        acc_r += int(ev.get("runs") or 0)
+        acc_w += 1 if ev.get("wicket") else 0
+        while len(pts) <= ov:
+            pts.append({"over": len(pts), "runs": acc_r, "wickets": acc_w})
+        if pts[ov]["runs"] < acc_r or pts[ov]["wickets"] < acc_w:
+            pts[ov] = {"over": ov, "runs": acc_r, "wickets": acc_w}
+    if len(pts) > 1:
+        return [{"over": p["over"], "runs": p["runs"], "wickets": p["wickets"]} for p in pts]
+    out, cum_r, cum_w = [], 0, 0
+    for row in innings or []:
+        o = _num(row.get("overs"))
+        cum_r += int(row.get("runs") or 0)
+        cum_w += int(row.get("wickets") or 0)
+        for each in range(1, int(o) + 1):
+            out.append({"over": each, "runs": round(cum_r * each / max(o, 1)), "wickets": cum_w})
+    return out
+
 
 
 async def _live_doc(match_id: str) -> dict:
@@ -2709,6 +2941,8 @@ async def fetch_live_snapshot(match: dict, feed: Optional[str] = None) -> dict:
     lines, unmatched, missing = ([], [], [])
     if stats:
         lines, unmatched, missing = map_stats_to_squad(stats, squad)
+    events = await fetch_live_events(external_id, api_key, squad)
+    tables = innings_tables(payload, lines, squad, innings)
     return {
         "match_id": match["id"],
         "external_id": external_id,
@@ -2716,6 +2950,9 @@ async def fetch_live_snapshot(match: dict, feed: Optional[str] = None) -> dict:
         "status_text": status_text,
         "venue": venue,
         "innings": innings,
+        "events": events,
+        "tables": tables,
+        "run_rate": run_rate_series(events, innings),
         "players_found": len(stats),
         "lines": lines,
         "unmatched": unmatched,
@@ -2766,17 +3003,28 @@ async def refresh_live_boards(match_id: str) -> dict:
         ).to_list(5000)
         if not entries:
             continue
-        for row in await build_leaderboard(c, entries):
-            await db.entries.update_one(
-                {"id": row["entry_id"]},
-                {"$set": {"fantasy_points": row["points"], "fantasy_rank": row["rank"], "live_rank_at": now_iso()}},
-            )
+        rows = await build_leaderboard(c, entries)
+        for row in rows:
+            before = next((e.get("fantasy_rank") for e in entries if e["id"] == row["entry_id"]), None)
+            upd = {"fantasy_points": row["points"], "fantasy_rank": row["rank"],
+                   "live_rank_at": now_iso(), "live_entries": len(entries)}
+            if before and before != row["rank"]:
+                # only shift the "previous rank" when it actually moved, so arrows mean something
+                upd["fantasy_rank_prev"] = before
+            await db.entries.update_one({"id": row["entry_id"]}, {"$set": upd})
             ranked += 1
+        await db.contests.update_one({"id": c["id"]}, {"$set": {
+            "live_ranked_at": now_iso(), "live_entries": len(entries),
+            "live_top_points": rows[0]["points"] if rows else 0,
+        }})
     return {"contests": len(contests), "entries_ranked": ranked}
 
 
 def public_live_view(match: dict, doc: dict) -> dict:
     """What the in-app live screen shows — ticker plus our own points, never raw provider data."""
+    innings = doc.get("innings", [])
+    events = doc.get("events", [])
+    tables = doc.get("tables", [])
     return {
         "available": bool(doc),
         "match_id": match["id"],
@@ -2785,7 +3033,12 @@ def public_live_view(match: dict, doc: dict) -> dict:
         "locked": match_locked(match),
         "status_text": doc.get("status_text", ""),
         "venue": doc.get("venue", ""),
-        "innings": doc.get("innings", []),
+        "innings": innings,
+        "current": innings[-1] if innings else None,
+        "events": events,
+        "last_events": events[-18:],
+        "tables": tables,
+        "run_rate": doc.get("run_rate", []),
         "feed": doc.get("feed", ""),
         "auto_live": bool(match.get("auto_live")),
         "updated_at": doc.get("fetched_at"),
@@ -2872,18 +3125,47 @@ async def match_live(match_id: str, user=Depends(get_current_user)):
     out["error"] = note
     # Top performers + my standing, from our own points table.
     scores = await db.player_scores.find({"match_id": match_id}, {"_id": 0}).to_list(300)
-    top = sorted(scores, key=lambda s: -float(s.get("points") or 0))[:5]
+    by_player = {s.get("player_id"): s for s in scores}
+    top = sorted(scores, key=lambda s: -float(s.get("points") or 0))[:8]
     out["top_performers"] = [{"name": s.get("player_name"), "team": s.get("team"), "role": s.get("role"),
                               "points": s.get("points", 0)} for s in top if float(s.get("points") or 0) > 0]
     out["partial"] = any(bool(s.get("partial")) for s in scores)
-    contest_ids = [c["id"] for c in await db.contests.find({"match_id": match_id, "kind": "fantasy"},
-                                                            {"_id": 0, "id": 1}).to_list(200)]
+    best = top[0] if top and float(top[0].get("points") or 0) > 0 else None
+    out["star"] = ({"name": best.get("player_name"), "team": best.get("team"), "role": best.get("role"),
+                    "points": best.get("points", 0)} if best and (match.get("scorecard_entered")
+                                                                  or match.get("status") == "completed") else None)
+
+    my_teams = await db.fantasy_teams.find({"match_id": match_id, "user_id": user["id"]},
+                                           {"_id": 0, "player_ids": 1}).to_list(20)
+    my_ids = {pid for t in my_teams for pid in (t.get("player_ids") or [])}
+    out["my_player_ids"] = sorted(my_ids)
+    out["events"] = [dict(e, mine=bool(e.get("batter_id") in my_ids or e.get("bowler_id") in my_ids))
+                     for e in out.get("events", [])]
+    out["last_events"] = out["events"][-18:]
+    names = {p["id"]: p for p in await get_match_players(match_id)}
+    mine_rows = [{"player_id": pid, "name": (names.get(pid) or {}).get("name"),
+                  "team": (names.get(pid) or {}).get("team"), "role": (names.get(pid) or {}).get("role"),
+                  "points": float((by_player.get(pid) or {}).get("points") or 0)} for pid in my_ids]
+    out["my_players"] = sorted(mine_rows, key=lambda c: -c["points"])[:11]
+
+    contests = await db.contests.find({"match_id": match_id, "kind": "fantasy"}, {"_id": 0}).to_list(200)
+    meta = {c["id"]: c for c in contests}
     my = await db.entries.find(
-        {"contest_id": {"$in": contest_ids}, "user_id": user["id"], "status": {"$in": ["approved", "won"]}},
-        {"_id": 0, "contest_id": 1, "fantasy_rank": 1, "fantasy_points": 1, "team_name": 1},
+        {"contest_id": {"$in": list(meta)}, "user_id": user["id"], "status": {"$in": ["approved", "won"]}},
+        {"_id": 0, "contest_id": 1, "fantasy_rank": 1, "fantasy_rank_prev": 1, "fantasy_points": 1,
+         "team_name": 1, "live_entries": 1},
     ).to_list(200)
-    out["my_positions"] = [{"contest_id": m.get("contest_id"), "rank": m.get("fantasy_rank"),
-                            "points": m.get("fantasy_points"), "team_name": m.get("team_name")} for m in my]
+    out["my_positions"] = []
+    for m in my:
+        rank, prev = m.get("fantasy_rank"), m.get("fantasy_rank_prev")
+        c = meta.get(m.get("contest_id")) or {}
+        out["my_positions"].append({
+            "contest_id": m.get("contest_id"), "contest_title": c.get("title"),
+            "rank": rank, "rank_delta": (prev - rank) if (rank and prev) else 0,
+            "entries": m.get("live_entries") or c.get("live_entries") or 0,
+            "top_points": c.get("live_top_points"), "points": m.get("fantasy_points"),
+            "team_name": m.get("team_name"),
+        })
     return out
 
 
@@ -3164,7 +3446,8 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 2, "version_name": "1.1.0", "apk_url": "", "notes": "", "force_update": False}
+APP_VERSION_DEFAULTS = {"version_code": 4, "version_name": "1.3.0", "apk_url": "",
+                        "notes": "Live match centre, team insights and play-safety controls", "force_update": False}
 
 
 async def app_release() -> dict:
@@ -3456,6 +3739,625 @@ async def refund_contest(contest_id: str, admin=Depends(require_admin)):
     res = await refund_entries(entries, "Contest cancelled by organiser")
     await db.contests.update_one({"id": contest_id}, {"$set": {"status": "closed", "refunded_at": now_iso()}})
     return res
+
+
+# ---------- Builder depth: player insight, XI compare, settlement explainer ----------
+@api_router.get("/players/{player_id}/insight")
+async def player_insight(player_id: str, user=Depends(get_current_user)):
+    """Everything a selection decision needs: value, role rank, and how this player has been scoring."""
+    p = await db.players.find_one({"id": player_id}, {"_id": 0})
+    if not p:
+        raise HTTPException(status_code=404, detail="Player not found")
+    match = await db.matches.find_one({"id": p["match_id"]}, {"_id": 0}) or {}
+    squad = await get_match_players(p["match_id"])
+    credits = float(p.get("credits") or 0)
+    proj = float(p.get("projection") or 0)
+    value = round(proj / credits, 2) if credits and proj else 0.0
+    peers = [float(x.get("projection") or 0) / max(float(x.get("credits") or 1), 0.1)
+             for x in squad if float(x.get("projection") or 0) > 0]
+    median = round(sorted(peers)[len(peers) // 2], 2) if peers else 0.0
+    role_rank = 1 + sum(1 for x in squad if x.get("role") == p.get("role")
+                        and float(x.get("projection") or 0) > proj) if proj else 0
+    hist = await db.player_scores.find({"player_id": player_id}, {"_id": 0}).sort("updated_at", -1).to_list(10)
+    labels = {}
+    if hist:
+        for m in await db.matches.find({"id": {"$in": [h["match_id"] for h in hist]}},
+                                       {"_id": 0, "id": 1, "team_a_short": 1, "team_b_short": 1,
+                                        "status": 1, "scorecard_entered": 1}).to_list(40):
+            labels[m["id"]] = f"{m.get('team_a_short')} vs {m.get('team_b_short')}"
+            labels[m["id"] + "_final"] = bool(m.get("scorecard_entered")) or m.get("status") == "completed"
+    form = [{"match_id": h["match_id"], "match": labels.get(h["match_id"], "match"),
+             "final": bool(labels.get(h["match_id"] + "_final")), "points": h.get("points", 0),
+             "runs": int((h.get("stats") or {}).get("runs") or 0),
+             "wickets": int((h.get("stats") or {}).get("wickets") or 0)} for h in hist]
+    pts = [float(f["points"] or 0) for f in form]
+    return {
+        "player": {k: p.get(k) for k in ("id", "name", "team", "role", "credits", "projection", "playing", "match_id")},
+        "match": {"id": match.get("id"), "label": f"{match.get('team_a_short')} vs {match.get('team_b_short')}",
+                  "status": match.get("status"), "venue": match.get("venue")},
+        "value_per_credit": value,
+        "squad_median_value": median,
+        "value_verdict": ("good value" if value and median and value >= median * 1.15 else
+                          "fair" if value and median and value >= median * 0.85 else
+                          "expensive" if value else "no projection set"),
+        "role_rank": role_rank,
+        "role_peers": sum(1 for x in squad if x.get("role") == p.get("role")),
+        "innings": len(form),
+        "avg_points": round(sum(pts) / len(pts), 2) if pts else 0,
+        "best_points": max(pts) if pts else 0,
+        "form": form,
+    }
+
+
+@api_router.get("/fantasy/teams/{team_id}/compare/{other_id}")
+async def compare_fantasy_teams(team_id: str, other_id: str, user=Depends(get_current_user)):
+    """Side-by-side of two of my XIs: who is shared, who differs, and what each pick scored."""
+    a = await db.fantasy_teams.find_one({"id": team_id}, {"_id": 0})
+    b = await db.fantasy_teams.find_one({"id": other_id}, {"_id": 0})
+    if not a or not b:
+        raise HTTPException(status_code=404, detail="Team not found")
+    if user["role"] != "admin" and (a.get("user_id") != user["id"] or b.get("user_id") != user["id"]):
+        raise HTTPException(status_code=404, detail="Team not found")
+    if a.get("match_id") != b.get("match_id"):
+        raise HTTPException(status_code=400, detail="Only teams from the same match can be compared")
+    match_id = a["match_id"]
+    names = {p["id"]: p for p in await get_match_players(match_id)}
+    scores = await db.player_scores.find({"match_id": match_id}, {"_id": 0}).to_list(300)
+    by_player = {s["player_id"]: s for s in scores}
+    match = await db.matches.find_one({"id": match_id}, {"_id": 0}) or {}
+    have_scores = bool(match.get("scorecard_entered")) or match.get("status") == "completed"
+
+    def label(pid):
+        info = names.get(pid) or {}
+        return {"player_id": pid, "name": info.get("name"), "team": info.get("team"), "role": info.get("role"),
+                "credits": info.get("credits"), "points": float((by_player.get(pid) or {}).get("points") or 0)}
+
+    set_a, set_b = set(a.get("player_ids") or []), set(b.get("player_ids") or [])
+    shared = [label(pid) for pid in a.get("player_ids") or [] if pid in set_b]
+    diff = []
+    for pid in sorted(set_a ^ set_b):
+        row = label(pid)
+        row["in"] = "A" if pid in set_a else "B"
+        row["captain"] = pid in (a.get("captain_id"), b.get("captain_id")) and (
+            a.get("captain_id") == pid or b.get("captain_id") == pid)
+        row["captain_of"] = ("A" if a.get("captain_id") == pid else "") + ("B" if b.get("captain_id") == pid else "")
+        row["vice_of"] = ("A" if a.get("vice_captain_id") == pid else "") + ("B" if b.get("vice_captain_id") == pid else "")
+        diff.append(row)
+    diff.sort(key=lambda r: -r["points"])
+
+    def side(t):
+        tp = team_points({pid: {"total": float((by_player.get(pid) or {}).get("points") or 0)} for pid in t.get("player_ids") or []}, t, names)
+        return {"id": t["id"], "name": t.get("name"), "credits_used": t.get("credits_used"),
+                "captain": (names.get(t.get("captain_id")) or {}).get("name"),
+                "vice_captain": (names.get(t.get("vice_captain_id")) or {}).get("name"),
+                "points": tp["total"] if have_scores else None}
+
+    ta, tb = side(a), side(b)
+    return {
+        "match": {"id": match_id, "label": f"{match.get('team_a_short')} vs {match.get('team_b_short')}",
+                  "status": match.get("status")},
+        "scorecard_entered": bool(match.get("scorecard_entered")),
+        "final": have_scores,
+        "team_a": ta, "team_b": tb,
+        "shared_count": len(shared),
+        "differ_count": len(diff),
+        "swing": (round((ta["points"] or 0) - (tb["points"] or 0), 2) if have_scores else None),
+        "differences": diff,
+        "shared": shared,
+    }
+
+
+@api_router.get("/entries/{entry_id}/settlement")
+async def entry_settlement(entry_id: str, user=Depends(get_current_user)):
+    """Why this entry finished where it did — per player, per scoring component, plus the prize rule."""
+    e = await db.entries.find_one({"id": entry_id}, {"_id": 0})
+    if not e:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    if user["role"] != "admin" and e.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    contest = await db.contests.find_one({"id": e.get("contest_id")}, {"_id": 0}) or {}
+    team = await db.fantasy_teams.find_one({"id": e.get("team_id")}, {"_id": 0}) if e.get("team_id") else None
+    names = {p["id"]: p for p in await get_match_players(contest.get("match_id") or "")}
+    scores = await db.player_scores.find({"match_id": contest.get("match_id")}, {"_id": 0}).to_list(300)
+    player_points = {s["player_id"]: {"total": s.get("points", 0), "components": s.get("components") or {}}
+                     for s in scores}
+    rows = team_points(player_points, team, names)["rows"] if team else []
+    prizes = {int(p["rank"]): float(p["amount"]) for p in (contest.get("prize_breakdown") or [])}
+    rank = e.get("fantasy_rank")
+    return {
+        "entry": {"id": e["id"], "status": e.get("status"), "team_name": e.get("team_name"),
+                  "entry_fee": e.get("entry_fee"), "created_at": e.get("created_at"),
+                  "prize": e.get("winner_prize", 0), "refunded": e.get("status") == "refunded"},
+        "contest": {"id": contest.get("id"), "title": contest.get("title"), "settled_at": contest.get("settled_at"),
+                    "prize_pool": contest.get("prize_pool"),
+                    "prize_breakdown": sorted(prizes.items()),
+                    "prize_for_my_rank": prizes.get(int(rank)) if rank else None,
+                    "live_entries": contest.get("live_entries"), "kind": contest.get("kind")},
+        "rank": rank,
+        "points": e.get("fantasy_points"),
+        "rows": rows,
+        "rules": POINTS_RULES,
+        "scorecard_entered": bool((await db.matches.find_one({"id": contest.get("match_id")}, {"_id": 0}) or {})
+                                  .get("scorecard_entered")),
+    }
+
+
+# ---------- Play safety: deposit limits, self-exclusion, reality check, KYC ----------
+SAFETY_DEFAULTS = {
+    "allow_user_deposit_limit": True,
+    "default_deposit_limit_daily": 0,      # ₹; 0 = no limit forced on new users
+    "max_deposit_limit_daily": 0,          # ₹; 0 = user may set any limit
+    "allow_self_exclusion": True,
+    "self_exclusion_min_days": 1,
+    "self_exclusion_max_days": 180,
+    "allow_self_lift_exclusion": False,    # a break should not be shortcut in a weak moment
+    "reality_check_default_minutes": 0,    # 0 = off; otherwise the app shows a session timer
+    "max_daily_spend": 0,                  # ₹ across all entry fees per day; 0 = off
+    "kyc_required_for_payouts": False,     # turn on to hold payouts until PAN is verified
+    "support_email": "",
+    "helpline": "",
+    "reality_check_message": "You have been playing for a while. Check your time, spend and mood — you can pause or set a deposit limit any time.",
+}
+PAN_RE = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
+
+
+async def get_safety_settings() -> dict:
+    s = await db.settings.find_one({"key": "safety"}, {"_id": 0}) or {}
+    out = dict(SAFETY_DEFAULTS)
+    for k in SAFETY_DEFAULTS:
+        if s.get(k) is not None:
+            out[k] = s[k]
+    return out
+
+
+def _exclusion_until(user: dict) -> str:
+    return str(((user.get("self_exclusion") or {}).get("until")) or "")
+
+
+def _is_excluded(user: dict) -> bool:
+    until = _exclusion_until(user)
+    return bool(until) and until > now_iso()
+
+
+def _utc_day() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+async def deposited_today(user: dict) -> float:
+    if user.get("deposit_day") != _utc_day():
+        return 0.0
+    return float(user.get("deposited_today") or 0)
+
+
+async def add_deposit(user_id: str, amount: float) -> None:
+    fresh = await db.users.find_one({"id": user_id}, {"_id": 0, "deposit_day": 1, "deposited_today": 1}) or {}
+    base = float(fresh.get("deposited_today") or 0) if fresh.get("deposit_day") == _utc_day() else 0.0
+    await db.users.update_one({"id": user_id}, {"$set": {"deposit_day": _utc_day(),
+                                                         "deposited_today": round(base + float(amount), 2)}})
+
+
+async def spend_today(user_id: str) -> float:
+    total = 0.0
+    async for e in db.entries.find({"user_id": user_id, "status": {"$in": ["pending", "approved", "won"]},
+                                   "created_at": {"$gte": day_start_iso()}}, {"_id": 0, "entry_fee": 1}):
+        total += float(e.get("entry_fee") or 0)
+    return total
+
+
+async def enforce_play_safety(user: dict, fee: float = 0.0) -> None:
+    """Blocks new real-money play for an excluded user or one over their daily spend cap."""
+    if user.get("role") == "admin":
+        return
+    if _is_excluded(user):
+        raise HTTPException(status_code=400,
+                            detail=f"You chose to take a break until {_exclusion_until(user)[:10]}. "
+                                   "Entries stay closed for you until then.")
+    s = await get_safety_settings()
+    cap = float(s.get("max_daily_spend") or 0)
+    if cap:
+        already = await spend_today(user["id"])
+        if already + float(fee or 0) > cap:
+            left = max(round(cap - already, 2), 0.0)
+            raise HTTPException(status_code=400,
+                                detail=f"Daily play cap of {inr(cap)} reached ({inr(left)} left today). "
+                                       "You can change the cap in Play responsibly.")
+
+
+async def enforce_deposit_safety(user: dict, amount: float) -> None:
+    """Blocks a top-up that would break the user's own deposit limit (or an active exclusion)."""
+    if user.get("role") == "admin":
+        return
+    if _is_excluded(user):
+        raise HTTPException(status_code=400,
+                            detail=f"Your account is in self-exclusion until {_exclusion_until(user)[:10]} — "
+                                  "deposits are blocked.")
+    s = await get_safety_settings()
+    if not s["allow_user_deposit_limit"]:
+        return
+    limit = float(user.get("deposit_limit_daily") or 0) or float(s.get("default_deposit_limit_daily") or 0)
+    if limit <= 0:
+        return
+    already = await deposited_today(user)
+    if already + float(amount) > limit:
+        left = max(round(limit - already, 2), 0.0)
+        raise HTTPException(status_code=400,
+                            detail=f"Your daily deposit limit is {inr(limit)}. {inr(left)} left today — "
+                                   "raise it in Play responsibly if this was deliberate.")
+
+
+def _mask_pan(pan: str) -> str:
+    return f"{pan[:5]}****{pan[-1]}" if len(pan) >= 10 else pan
+
+
+class SafetyBody(BaseModel):
+    deposit_limit_daily: Optional[float] = Field(default=None, ge=0, le=1000000)
+    reality_check_minutes: Optional[int] = Field(default=None, ge=0, le=600)
+
+
+class ExcludeBody(BaseModel):
+    days: int = Field(ge=0, le=3650)
+    reason: str = Field(default="", max_length=200)
+
+
+class LiftBody(BaseModel):
+    ack: bool = False
+
+
+class KycBody(BaseModel):
+    full_name: str = Field(min_length=3, max_length=80)
+    pan: str = Field(min_length=10, max_length=10)
+
+
+@api_router.get("/me/safety")
+async def my_safety(user=Depends(get_current_user)):
+    s = await get_safety_settings()
+    g = await get_guard_settings()
+    return {
+        "deposit_limit_daily": float(user.get("deposit_limit_daily") or 0),
+        "default_deposit_limit_daily": float(s["default_deposit_limit_daily"] or 0),
+        "max_deposit_limit_daily": float(s["max_deposit_limit_daily"] or 0),
+        "allow_user_deposit_limit": bool(s["allow_user_deposit_limit"]),
+        "reality_check_minutes": int(user.get("reality_check_minutes") or s["reality_check_default_minutes"] or 0),
+        "self_exclusion": user.get("self_exclusion") or {},
+        "excluded": _is_excluded(user),
+        "allow_self_exclusion": bool(s["allow_self_exclusion"]),
+        "allow_self_lift": bool(s["allow_self_lift_exclusion"]),
+        "self_exclusion_min_days": int(s["self_exclusion_min_days"]),
+        "self_exclusion_max_days": int(s["self_exclusion_max_days"]),
+        "daily_spend_cap": float(s["max_daily_spend"] or 0),
+        "deposited_today": await deposited_today(user),
+        "spent_today": round(await spend_today(user["id"]), 2),
+        "kyc": {"status": (user.get("kyc") or {}).get("status", "none"),
+                "name": (user.get("kyc") or {}).get("name"),
+                "pan": (user.get("kyc") or {}).get("pan_masked"),
+                "note": (user.get("kyc") or {}).get("note"),
+                "submitted_at": (user.get("kyc") or {}).get("submitted_at")},
+        "kyc_required_for_payouts": bool(s["kyc_required_for_payouts"]),
+        "support_email": s["support_email"], "helpline": s["helpline"],
+        "reality_check_message": s["reality_check_message"],
+        "terms_title": g["terms_title"], "terms_version": g["terms_version"],
+        "age_gate": bool(g["require_age_gate"]),
+    }
+
+
+@api_router.put("/me/safety")
+async def update_my_safety(body: SafetyBody, user=Depends(get_current_user)):
+    s = await get_safety_settings()
+    updates = {"safety_updated_at": now_iso()}
+    if body.deposit_limit_daily is not None:
+        if not s["allow_user_deposit_limit"]:
+            raise HTTPException(status_code=400, detail="Deposit limits are managed by the organiser")
+        limit = round(float(body.deposit_limit_daily), 2)
+        cap = float(s["max_deposit_limit_daily"] or 0)
+        if cap and limit > cap:
+            raise HTTPException(status_code=400, detail=f"Deposit limits can be at most {inr(cap)}")
+        updates["deposit_limit_daily"] = limit
+    if body.reality_check_minutes is not None:
+        updates["reality_check_minutes"] = int(body.reality_check_minutes)
+    await db.users.update_one({"id": user["id"]}, {"$set": updates})
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return await my_safety(fresh)
+
+
+@api_router.post("/me/self-exclude")
+async def self_exclude(body: ExcludeBody, user=Depends(get_current_user)):
+    s = await get_safety_settings()
+    if not s["allow_self_exclusion"]:
+        raise HTTPException(status_code=400, detail="Self-exclusion is disabled — contact the organiser")
+    if body.days <= 0:
+        await db.users.update_one({"id": user["id"]}, {"$unset": {"self_exclusion": ""}})
+        await push_notification(user["id"], "safety", "Self-exclusion lifted",
+                                "Your self-imposed break has ended. Play sensibly.", {})
+        return {"ok": True, "excluded": False}
+    if body.days < int(s["self_exclusion_min_days"]):
+        raise HTTPException(status_code=400, detail=f"The shortest break you can take is {s['self_exclusion_min_days']} day(s)")
+    if body.days > int(s["self_exclusion_max_days"]):
+        raise HTTPException(status_code=400, detail=f"Self-exclusion can be at most {s['self_exclusion_max_days']} days")
+    until = (datetime.now(timezone.utc) + timedelta(days=body.days)).isoformat()
+    doc = {"until": until, "days": body.days, "reason": body.reason.strip(), "started_at": now_iso()}
+    await db.users.update_one({"id": user["id"]}, {"$set": {"self_exclusion": doc}})
+    await push_notification(user["id"], "safety", "Self-exclusion is active",
+                            f"You cannot join contests or add money until {until[:10]}. "
+                            "Winnings can still be withdrawn.", {"until": until})
+    return {"ok": True, "excluded": True, "self_exclusion": doc,
+            "balance_held": float(user.get("wallet_balance") or 0)}
+
+
+@api_router.post("/me/self-exclude/lift")
+async def self_exclude_lift(body: LiftBody, user=Depends(get_current_user)):
+    if not _is_excluded(user):
+        return {"ok": True, "excluded": False}
+    if not body.ack:
+        raise HTTPException(status_code=400, detail="Confirm that you understand the break is a protective measure")
+    s = await get_safety_settings()
+    if not s["allow_self_lift_exclusion"]:
+        raise HTTPException(status_code=403, detail="Self-exclusion can only be lifted by the organiser. "
+                                                   "Use the help section and we will review your request.")
+    await db.users.update_one({"id": user["id"]}, {"$unset": {"self_exclusion": ""}})
+    return {"ok": True, "excluded": False}
+
+
+@api_router.put("/me/kyc")
+async def submit_kyc(body: KycBody, user=Depends(get_current_user)):
+    pan = body.pan.strip().upper()
+    if not PAN_RE.match(pan):
+        raise HTTPException(status_code=400, detail="Enter a valid 10-character PAN, e.g. ABCDE1234F")
+    existing = user.get("kyc") or {}
+    if existing.get("status") == "verified" and existing.get("pan_masked") != _mask_pan(pan):
+        raise HTTPException(status_code=400, detail="Contact the organiser to change a verified PAN")
+    doc = {"status": "pending", "name": body.full_name.strip(), "pan_masked": _mask_pan(pan),
+           "pan_hash": hashlib.sha256(pan.encode()).hexdigest()[:16], "submitted_at": now_iso(), "note": ""}
+    await db.users.update_one({"id": user["id"]}, {"$set": {"kyc": doc}})
+    return {"ok": True, "kyc": {"status": doc["status"], "name": doc["name"], "pan": doc["pan_masked"]}}
+
+
+class AdminSafetyBody(BaseModel):
+    deposit_limit_daily: Optional[float] = Field(default=None, ge=0, le=1000000)
+    exclude_days: Optional[int] = Field(default=None, ge=0, le=3650)
+    lift_exclusion: Optional[bool] = None
+    note: Optional[str] = Field(default=None, max_length=200)
+
+
+@api_router.post("/admin/users/{user_id}/safety")
+async def admin_user_safety(user_id: str, body: AdminSafetyBody, admin=Depends(require_admin)):
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    updates = {"safety_updated_at": now_iso(), "safety_by": admin["id"]}
+    if body.deposit_limit_daily is not None:
+        updates["deposit_limit_daily"] = round(float(body.deposit_limit_daily), 2)
+    if body.exclude_days:
+        until = (datetime.now(timezone.utc) + timedelta(days=body.exclude_days)).isoformat()
+        updates["self_exclusion"] = {"until": until, "days": body.exclude_days,
+                                    "reason": (body.note or "Excluded by organiser").strip()[:200],
+                                    "started_at": now_iso(), "by_admin": True}
+    if body.lift_exclusion:
+        updates["self_exclusion_lifted_at"] = now_iso()
+    await db.users.update_one({"id": user_id}, {"$set": updates})
+    if body.lift_exclusion:
+        await db.users.update_one({"id": user_id}, {"$unset": {"self_exclusion": ""}})
+    await push_notification(user_id, "safety", "Account restriction updated",
+                            body.note or "The organiser updated the play-safety settings on your account.", {})
+    fresh = await db.users.find_one({"id": user_id}, {"_id": 0})
+    return {"ok": True, "user": {"id": fresh["id"], "name": fresh.get("name"),
+                                 "deposit_limit_daily": float(fresh.get("deposit_limit_daily") or 0),
+                                 "self_exclusion": fresh.get("self_exclusion") or {},
+                                 "kyc": fresh.get("kyc") or {}}}
+
+
+class KycDecisionBody(BaseModel):
+    decision: str = Field(pattern="^(verified|rejected)$")
+    note: str = Field(default="", max_length=200)
+
+
+@api_router.post("/admin/users/{user_id}/kyc")
+async def admin_user_kyc(user_id: str, body: KycDecisionBody, admin=Depends(require_admin)):
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    kyc = dict(target.get("kyc") or {})
+    if not kyc.get("pan_masked"):
+        raise HTTPException(status_code=400, detail="This user has not submitted a PAN yet")
+    kyc.update({"status": body.decision, "note": body.note.strip(),
+                "reviewed_at": now_iso(), "reviewed_by": admin["id"]})
+    await db.users.update_one({"id": user_id}, {"$set": {"kyc": kyc}})
+    await push_notification(
+        user_id, "kyc", "KYC " + ("verified" if body.decision == "verified" else "not accepted"),
+        ("Your PAN is verified — withdrawals are unlocked." if body.decision == "verified"
+         else f"We could not verify your PAN. {body.note}".strip()), {})
+    return {"ok": True, "kyc": {"status": kyc["status"], "pan": kyc.get("pan_masked"),
+                                "name": kyc.get("name"), "note": kyc.get("note")}}
+
+
+class SafetySettingsBody(BaseModel):
+    allow_user_deposit_limit: Optional[bool] = None
+    default_deposit_limit_daily: Optional[float] = Field(default=None, ge=0, le=1000000)
+    max_deposit_limit_daily: Optional[float] = Field(default=None, ge=0, le=1000000)
+    allow_self_exclusion: Optional[bool] = None
+    self_exclusion_min_days: Optional[int] = Field(default=None, ge=1, le=365)
+    self_exclusion_max_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    allow_self_lift_exclusion: Optional[bool] = None
+    reality_check_default_minutes: Optional[int] = Field(default=None, ge=0, le=600)
+    reality_check_message: Optional[str] = Field(default=None, max_length=400)
+    max_daily_spend: Optional[float] = Field(default=None, ge=0, le=1000000)
+    kyc_required_for_payouts: Optional[bool] = None
+    support_email: Optional[str] = Field(default=None, max_length=120)
+    helpline: Optional[str] = Field(default=None, max_length=60)
+
+
+@api_router.get("/admin/safety")
+async def admin_safety(q: Optional[str] = None, limit: int = Query(200, ge=1, le=1000),
+                       admin=Depends(require_admin)):
+    s = await get_safety_settings()
+    users = await db.users.find({"role": "user"}, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    restricted, kyc_pending = [], []
+    for u in users:
+        row = {"id": u["id"], "name": u.get("name"), "mobile": u.get("mobile"),
+               "wallet_balance": float(u.get("wallet_balance") or 0),
+               "deposit_limit_daily": float(u.get("deposit_limit_daily") or 0),
+               "deposited_today": await deposited_today(u),
+               "spent_today": round(await spend_today(u["id"]), 2),
+               "self_exclusion": u.get("self_exclusion") or {},
+               "excluded": _is_excluded(u),
+               "kyc": {"status": (u.get("kyc") or {}).get("status", "none"),
+                       "name": (u.get("kyc") or {}).get("name"),
+                       "pan": (u.get("kyc") or {}).get("pan_masked"),
+                       "submitted_at": (u.get("kyc") or {}).get("submitted_at")}}
+        if q:
+            hay = f"{row['name']} {row['mobile']}".lower()
+            if q.lower() not in hay:
+                continue
+        if row["excluded"] or row["deposit_limit_daily"]:
+            restricted.append(row)
+        if row["kyc"]["status"] == "pending":
+            kyc_pending.append(row)
+    return {"settings": s, "restricted": restricted, "kyc_pending": kyc_pending,
+            "counts": {"users": len(users), "excluded": sum(1 for r in restricted if r["excluded"]),
+                       "kyc_pending": len(kyc_pending)}}
+
+
+@api_router.put("/admin/safety")
+async def admin_put_safety(body: SafetySettingsBody, admin=Depends(require_admin)):
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+    if (updates.get("self_exclusion_min_days") or 0) > (updates.get("self_exclusion_max_days") or 0):
+        raise HTTPException(status_code=400, detail="Minimum exclusion cannot exceed the maximum")
+    updates["key"] = "safety"
+    updates["updated_at"] = now_iso()
+    updates["updated_by"] = admin["id"]
+    await db.settings.update_one({"key": "safety"}, {"$set": updates}, upsert=True)
+    return await get_safety_settings()
+
+
+# ---------- FAQ + support tickets ----------
+FAQ_DEFAULTS = [
+    {"q": "How are fantasy points calculated?",
+     "a": "Exactly like the points screen in a contest: runs, boundaries, milestones, wickets, maidens, "
+          "catches, stumpings, run-outs and strike/economy bonuses. The captain counts double and the "
+          "vice-captain 1.5x. Every entry is scored from the scorecard the organiser publishes."},
+    {"q": "When do teams lock?",
+     "a": "At the scheduled start time of the match. Until then you can edit or delete a saved XI. "
+          "Once a match goes live the squads and entries are frozen."},
+    {"q": "When do I get my winnings?",
+     "a": "As soon as the organiser settles the contest, prize money is credited to your in-app wallet. "
+          "From the wallet you can request a payout to your own UPI; the transaction reference (UTR) "
+          "appears in the Withdrawals tab once the transfer completes."},
+    {"q": "What if a match is abandoned?",
+     "a": "Contests that cannot be completed are refunded — the full entry fee goes back to your wallet "
+          "and you get a notification. Refunded entries are marked clearly in My Entries."},
+    {"q": "How do I add money?",
+     "a": "Use Add money for a UPI or card payment, or pay an entry fee directly from your wallet. "
+          "Deposits are instant and you can set your own daily deposit limit in Play responsibly."},
+    {"q": "Is this gambling?",
+     "a": "PitchPlay is a skill-based fantasy game: every entry depends on your knowledge of cricket. "
+          "You must be 18 or older and real-money skill games are restricted in some Indian states, "
+          "so check your local rules. You can lose your entry fee — never play to chase losses."},
+]
+FAQ_MIN_LENGTH = 2
+
+
+class FaqItem(BaseModel):
+    q: str = Field(min_length=4, max_length=200)
+    a: str = Field(min_length=FAQ_MIN_LENGTH, max_length=1200)
+
+
+class FaqBody(BaseModel):
+    items: List[FaqItem] = Field(min_length=1, max_length=40)
+
+
+async def get_faq() -> list:
+    s = await db.settings.find_one({"key": "faq"}, {"_id": 0}) or {}
+    items = s.get("items")
+    return items if isinstance(items, list) and items else list(FAQ_DEFAULTS)
+
+
+@api_router.get("/legal/faq")
+async def legal_faq(user=Depends(get_current_user)):
+    return {"items": await get_faq()}
+
+
+@api_router.put("/admin/faq")
+async def admin_put_faq(body: FaqBody, admin=Depends(require_admin)):
+    items = [i.model_dump() for i in body.items]
+    await db.settings.update_one({"key": "faq"}, {"$set": {"key": "faq", "items": items,
+                                                           "updated_at": now_iso(), "updated_by": admin["id"]}},
+                                 upsert=True)
+    return {"items": await get_faq()}
+
+
+class TicketBody(BaseModel):
+    subject: str = Field(min_length=4, max_length=140)
+    message: str = Field(min_length=10, max_length=2000)
+    category: str = Field(default="other", max_length=30)
+    contest_id: Optional[str] = None
+    entry_id: Optional[str] = None
+    withdrawal_id: Optional[str] = None
+
+
+class TicketReplyBody(BaseModel):
+    message: str = Field(min_length=2, max_length=2000)
+    status: str = Field(default="answered", pattern="^(open|answered|resolved|closed)$")
+
+
+TICKET_CATEGORIES = ("payment", "entry", "scorecard", "payout", "account", "safety", "other")
+
+
+@api_router.post("/support/tickets")
+async def create_ticket(body: TicketBody, user=Depends(get_current_user)):
+    category = (body.category or "other").strip().lower()
+    if category not in TICKET_CATEGORIES:
+        raise HTTPException(status_code=400, detail=f"Category must be one of {', '.join(TICKET_CATEGORIES)}")
+    doc = {
+        "id": str(uuid.uuid4()), "user_id": user["id"], "user_name": user.get("name"),
+        "user_mobile": user.get("mobile"), "subject": body.subject.strip(), "message": body.message.strip(),
+        "category": category, "contest_id": body.contest_id, "entry_id": body.entry_id,
+        "withdrawal_id": body.withdrawal_id, "status": "open", "replies": [],
+        "created_at": now_iso(), "updated_at": now_iso(),
+    }
+    await db.support_tickets.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.get("/support/tickets/mine")
+async def my_tickets(user=Depends(get_current_user)):
+    return await db.support_tickets.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api_router.get("/support/tickets/{ticket_id}")
+async def one_ticket(ticket_id: str, user=Depends(get_current_user)):
+    t = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if t.get("user_id") != user["id"] and user.get("role") != "admin":
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return t
+
+
+@api_router.get("/admin/tickets")
+async def admin_tickets(status: Optional[str] = None, category: Optional[str] = None,
+                        limit: int = Query(200, ge=1, le=1000), admin=Depends(require_admin)):
+    q = {}
+    if status:
+        q["status"] = status
+    if category:
+        q["category"] = category
+    return await db.support_tickets.find(q, {"_id": 0}).sort("created_at", -1).to_list(limit)
+
+
+@api_router.post("/admin/tickets/{ticket_id}/reply")
+async def admin_ticket_reply(ticket_id: str, body: TicketReplyBody, admin=Depends(require_admin)):
+    t = await db.support_tickets.find_one({"id": ticket_id}, {"_id": 0})
+    if not t:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    reply = {"at": now_iso(), "by": admin.get("name") or "support", "message": body.message.strip()}
+    await db.support_tickets.update_one({"id": ticket_id}, {"$push": {"replies": reply},
+                                                            "$set": {"status": body.status, "updated_at": now_iso()}})
+    await push_notification(t["user_id"], "support", f"Reply to “{t['subject'][:60]}”",
+                            reply["message"], {"ticket_id": ticket_id, "status": body.status})
+    return {"ok": True, "ticket": {**t, "replies": list(t.get("replies") or []) + [reply],
+                                   "status": body.status}}
 
 
 # ---------- Startup ----------

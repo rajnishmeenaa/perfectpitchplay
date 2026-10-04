@@ -343,6 +343,27 @@ function LiveCenterPanel({ match, onMatchChanged }) {
               </div>
             ))}
           </div>
+          {(live.events || []).length > 0 && (
+            <div className="mt-3" data-testid="admin-live-events">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Ball feed · {live.events.length} received</div>
+              <div className="space-y-1">
+                {live.events.slice(-3).reverse().map((e, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[11px] text-zinc-300">
+                    <span className="tabular text-zinc-500 w-10">{e.over}.{e.ball}</span>
+                    <span className="tabular w-6 font-extrabold">{e.wicket ? "W" : e.runs}</span>
+                    <span className="truncate">{e.text}</span>
+                    <span className="ml-auto text-[10px] text-zinc-500">{e.batter || "—"}{(e.batter_id ? "" : " · unmapped")}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {(live.tables || []).length > 0 && (
+            <div className="text-[11px] text-zinc-500 mt-2" data-testid="admin-live-tables">
+              Innings tables users can read: {live.tables.map((t) => `${t.innings} (${(t.batting || []).length} batters, ${(t.bowling || []).length} bowlers)`).join(" · ")}
+              {(live.run_rate || []).length > 1 ? ` · run-rate graph over ${(live.run_rate || []).length} overs` : ""}
+            </div>
+          )}
           <div className="text-[11px] text-zinc-500 mt-3 tabular">
             Snapshot {live.updated_at ? new Date(live.updated_at).toLocaleString("en-IN") : "—"}
             {live.venue ? ` · ${live.venue}` : ""}
