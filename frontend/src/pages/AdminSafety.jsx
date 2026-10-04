@@ -49,19 +49,19 @@ export default function AdminSafety() {
 
       <Tabs defaultValue="controls" className="w-full">
         <TabsList className="bg-white border border-zinc-200 rounded-full p-1 h-auto">
-          <TabsTrigger value="controls" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-controls">
+          <TabsTrigger value="controls" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-controls">
             <ShieldCheck size={15} weight="bold" className="mr-1.5" /> Global controls
           </TabsTrigger>
-          <TabsTrigger value="restricted" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-restricted">
+          <TabsTrigger value="restricted" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-restricted">
             <Lock size={15} weight="bold" className="mr-1.5" /> Limits & breaks ({data.restricted.length})
           </TabsTrigger>
-          <TabsTrigger value="kyc" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-kyc">
+          <TabsTrigger value="kyc" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-kyc">
             <IdentificationCard size={15} weight="bold" className="mr-1.5" /> KYC ({data.kyc_pending.length})
           </TabsTrigger>
-          <TabsTrigger value="tickets" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-tickets">
+          <TabsTrigger value="tickets" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-tickets">
             <ChatCenteredDots size={15} weight="bold" className="mr-1.5" /> Help desk ({tickets.length})
           </TabsTrigger>
-          <TabsTrigger value="faq" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-faq">
+          <TabsTrigger value="faq" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="admin-safety-tab-faq">
             <Scroll size={15} weight="bold" className="mr-1.5" /> FAQ answers
           </TabsTrigger>
         </TabsList>
@@ -178,7 +178,7 @@ function SafetyControls({ settings, onSaved }) {
         <span>Payout KYC gate: <b>{yn(form.kyc_required_for_payouts)}</b></span>
       </div>
 
-      <Button onClick={save} disabled={busy} className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold" data-testid="safety-save-btn">
+      <Button onClick={save} disabled={busy} className="rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold" data-testid="safety-save-btn">
         {busy ? "Saving…" : "Save controls"}
       </Button>
     </div>
@@ -262,7 +262,7 @@ function KycQueue({ rows, onChanged }) {
             <div className="text-[12px] text-zinc-700 tabular" data-testid={`kyc-pan-${u.id}`}>{u.kyc.name} · {u.kyc.pan}</div>
             <div className="text-[11px] text-zinc-500">submitted {u.kyc.submitted_at ? new Date(u.kyc.submitted_at).toLocaleString("en-IN") : "—"}</div>
           </div>
-          <Button size="sm" onClick={() => decide(u.id, "verified")} className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold" data-testid={`kyc-verify-${u.id}`}>
+          <Button size="sm" onClick={() => decide(u.id, "verified")} className="rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold" data-testid={`kyc-verify-${u.id}`}>
             Verify
           </Button>
           <Button size="sm" variant="outline" onClick={() => decide(u.id, "rejected")} className="rounded-full font-bold text-red-700 border-red-200 hover:bg-red-50" data-testid={`kyc-reject-${u.id}`}>
@@ -298,7 +298,7 @@ function TicketDesk({ tickets, onChanged }) {
       <div className="flex flex-wrap gap-1.5">
         {["all", "open", "answered", "resolved", "closed"].map((f) => (
           <button key={f} type="button" onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${filter === f ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${filter === f ? "bg-turf text-white border-turf" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
             data-testid={`ticket-filter-${f}`}>{f}</button>
         ))}
       </div>
@@ -381,7 +381,7 @@ function FaqEditor({ onChanged }) {
         <Button variant="outline" size="sm" onClick={() => setItems((l) => [...l, { q: "", a: "" }])} className="rounded-full font-bold" data-testid="faq-add">
           Add a question
         </Button>
-        <Button onClick={save} disabled={busy} className="ml-auto rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold" data-testid="faq-save">
+        <Button onClick={save} disabled={busy} className="ml-auto rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold" data-testid="faq-save">
           {busy ? "Saving…" : "Publish FAQ"}
         </Button>
       </div>

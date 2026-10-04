@@ -213,7 +213,7 @@ export default function AdminOps() {
               Treat older builds as unusable
             </label>
             <div className="flex items-end">
-              <Button disabled={busy} onClick={saveRelease} className="rounded-md bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="ops-save-release">Save release info</Button>
+              <Button disabled={busy} onClick={saveRelease} className="rounded-md bg-turf hover:bg-turf-red-dark font-bold" data-testid="ops-save-release">Save release info</Button>
             </div>
           </div>
         )}
@@ -222,7 +222,7 @@ export default function AdminOps() {
 
       <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-settlement">
         <h2 className="font-heading text-xl font-extrabold text-zinc-950 flex items-center gap-2">
-          <Gauge size={18} weight="fill" className="text-gold" /> Settlement & automation
+          <Gauge size={18} weight="fill" className="text-turf" /> Settlement & automation
         </h2>
         <p className="text-sm text-zinc-500 mt-1">
           Tax withheld on every prize when you settle (0 keeps it off until your CA confirms the rate), plus the background jobs that close entries and settle contests.
@@ -264,7 +264,7 @@ export default function AdminOps() {
               <Switch checked={!!settle.bonus_join_enabled} onCheckedChange={(v) => setSettle({ ...settle, bonus_join_enabled: v })} />
             </label>
             <div className="lg:col-span-4 flex items-center gap-3">
-              <Button disabled={busy} onClick={saveSettlement} className="rounded-md bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="ops-save-settlement">
+              <Button disabled={busy} onClick={saveSettlement} className="rounded-md bg-turf hover:bg-turf-red-dark font-bold" data-testid="ops-save-settlement">
                 Save rules
               </Button>
               <p className="text-[11px] text-zinc-400">
@@ -277,7 +277,7 @@ export default function AdminOps() {
 
       <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-bonus">
         <h2 className="font-heading text-xl font-extrabold text-zinc-950 flex items-center gap-2">
-          <Coins size={18} weight="fill" className="text-gold" /> Bonus cash
+          <Coins size={18} weight="fill" className="text-turf" /> Bonus cash
         </h2>
         <p className="text-sm text-zinc-500 mt-1">
           Promotional money a member can use on entry fees but can never withdraw. Useful for refunds, win-backs and referral rewards.
@@ -302,7 +302,7 @@ export default function AdminOps() {
               className="mt-1.5" data-testid="bonus-note" />
           </div>
           <div className="lg:col-span-4">
-            <Button type="submit" disabled={busy} className="rounded-md bg-gold text-night hover:bg-gold-light font-extrabold" data-testid="bonus-grant-btn">
+            <Button type="submit" disabled={busy} className="rounded-md bg-turf text-ink hover:bg-turf-fire font-extrabold" data-testid="bonus-grant-btn">
               Grant bonus
             </Button>
           </div>
@@ -311,7 +311,7 @@ export default function AdminOps() {
 
       <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-broadcast">
         <h2 className="font-heading text-xl font-extrabold text-zinc-950 flex items-center gap-2">
-          <Megaphone size={18} weight="fill" className="text-gold" /> Broadcast
+          <Megaphone size={18} weight="fill" className="text-turf" /> Broadcast
         </h2>
         <p className="text-sm text-zinc-500 mt-1">
           Sends an in-app notification to every member right now, and to their device too once Firebase is wired up. Use it for contest drops and result announcements.
@@ -332,7 +332,7 @@ export default function AdminOps() {
             </select>
           </div>
           <div className="flex items-end">
-            <Button type="submit" disabled={busy} className="rounded-md bg-gold text-night hover:bg-gold-light font-extrabold w-full" data-testid="cast-send-btn">
+            <Button type="submit" disabled={busy} className="rounded-md bg-turf text-ink hover:bg-turf-fire font-extrabold w-full" data-testid="cast-send-btn">
               <PaperPlaneRight size={15} weight="bold" className="mr-1.5" /> {busy ? "Sending…" : "Send"}
             </Button>
           </div>
@@ -346,7 +346,7 @@ export default function AdminOps() {
 
       <div className="bg-white border border-zinc-200 rounded-lg p-6" data-testid="ops-growth">
         <h2 className="font-heading text-xl font-extrabold text-zinc-950 flex items-center gap-2">
-          <Gift size={18} weight="fill" className="text-gold" /> Referral rewards
+          <Gift size={18} weight="fill" className="text-turf" /> Referral rewards
         </h2>
         <p className="text-sm text-zinc-500 mt-1">
           Paid as non-withdrawable bonus cash when the invited player makes their first deposit above the bar. Leave it off until you have decided the numbers.
@@ -383,7 +383,7 @@ export default function AdminOps() {
                 className="mt-1.5 tabular" data-testid="growth-season-start" />
             </div>
             <div className="flex items-end">
-              <Button disabled={busy} onClick={saveGrowth} className="rounded-md bg-emerald-600 hover:bg-emerald-700 font-bold w-full" data-testid="growth-save-btn">
+              <Button disabled={busy} onClick={saveGrowth} className="rounded-md bg-turf hover:bg-turf-red-dark font-bold w-full" data-testid="growth-save-btn">
                 Save rewards
               </Button>
             </div>

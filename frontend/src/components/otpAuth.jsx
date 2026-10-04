@@ -111,7 +111,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
     }
   };
 
-  const field = "mt-2 border-zinc-200 focus-visible:ring-gold";
+  const field = "mt-2 border-zinc-200 focus-visible:ring-turf";
 
   if (step === "phone") {
     return (
@@ -133,14 +133,14 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
         <Button
           type="submit"
           disabled={busy}
-          className="w-full h-11 bg-gold hover:bg-gold-light text-night font-bold text-base rounded-md shadow-glow-gold active:scale-[0.98] transition-transform"
+          className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
           data-testid="otp-send-btn"
         >
           <ChatCenteredText size={18} weight="bold" className="mr-2" />
           {busy ? "Sending…" : "Send verification code"}
         </Button>
         <p className="text-xs text-zinc-500 flex items-center gap-1.5">
-          <ShieldCheck size={14} weight="fill" className="text-pitch" /> No password to forget. We text you a code each time.
+          <ShieldCheck size={14} weight="fill" className="text-neon" /> No password to forget. We text you a code each time.
         </p>
       </form>
     );
@@ -165,7 +165,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
         <Button
           type="submit"
           disabled={busy}
-          className="w-full h-11 bg-gold hover:bg-gold-light text-night font-bold text-base rounded-md shadow-glow-gold active:scale-[0.98] transition-transform"
+          className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
           data-testid="otp-verify-btn"
         >
           {busy ? "Checking…" : "Verify and continue"}
@@ -174,7 +174,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
           type="button"
           onClick={send}
           disabled={cooldown > 0 || busy}
-          className="w-full text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-gold disabled:opacity-50 flex items-center justify-center gap-1.5"
+          className="w-full text-xs font-bold uppercase tracking-widest text-zinc-500 hover:text-turf disabled:opacity-50 flex items-center justify-center gap-1.5"
           data-testid="otp-resend-btn"
         >
           <ArrowClockwise size={13} weight="bold" />
@@ -225,7 +225,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
       <Button
         type="submit"
         disabled={busy}
-        className="w-full h-11 bg-gold hover:bg-gold-light text-night font-bold text-base rounded-md shadow-glow-gold active:scale-[0.98] transition-transform"
+        className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
         data-testid="otp-signup-btn"
       >
         {busy ? "Creating…" : "Create my account"}

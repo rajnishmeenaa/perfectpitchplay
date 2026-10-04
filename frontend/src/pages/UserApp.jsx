@@ -21,6 +21,7 @@ import { ReferralCard, BadgeShelf, SeasonLadder } from "../components/growth";
 import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
 import { BottomNav } from "../components/bottomNav";
 import { MatchCarousel } from "../components/matchCarousel";
+import { SportStrip, ContestLobby, TurfCard, SPORTS } from "../components/turf";
 import { useNavigate } from "react-router-dom";
 
 const StatusBadge = ({ status }) => {
@@ -44,6 +45,9 @@ const StatusBadge = ({ status }) => {
 };
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+
+// Sport strip labels come from the Turf token file, so a new sport is one line there.
+const SPORT_LABELS = SPORTS.reduce((m, s) => ({ ...m, [s.id]: s.label }), {});
 
 /** How full a contest is, clamped so the bar never lies about capacity. */
 const fillPct = (c) => {
@@ -107,7 +111,7 @@ function MobileGate({ name, onSaved, setMobile, onLogout }) {
               value={mobile}
               onChange={(e) => setMobileVal(e.target.value)}
               placeholder="9876543210"
-              className="mt-2 border-zinc-200 focus-visible:ring-emerald-500 tabular"
+              className="mt-2 border-zinc-200 focus-visible:ring-turf tabular"
               data-testid="gate-mobile-input"
               required
             />
@@ -115,7 +119,7 @@ function MobileGate({ name, onSaved, setMobile, onLogout }) {
           <Button
             type="submit"
             disabled={busy}
-            className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 font-bold text-base rounded-md active:scale-[0.98] transition-transform"
+            className="w-full h-11 bg-turf hover:bg-turf-red-dark font-bold text-base rounded-md active:scale-[0.98] transition-transform"
             data-testid="gate-mobile-submit"
           >
             {busy ? "Saving..." : "Enter contest lobby"}
@@ -160,6 +164,7 @@ export default function UserApp() {
   const [focusSection, setFocusSection] = useState(null);
   const [matches, setMatches] = useState([]);
   const [matchFilter, setMatchFilter] = useState(null);
+  const [sport, setSport] = useState("cricket");
   const [topups, setTopups] = useState([]);
 
   const loadAll = async () => {
@@ -252,7 +257,7 @@ export default function UserApp() {
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <AvatarTrigger user={user} onClick={() => setMoreOpen(true)} />
             <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950 min-w-0">
-              <CricketBall weight="fill" className="text-gold shrink-0" size={24} />
+              <CricketBall weight="fill" className="text-turf shrink-0" size={24} />
               <span className="truncate">PitchPlay</span>
             </div>
           </div>
@@ -294,7 +299,7 @@ export default function UserApp() {
             <button
               type="button"
               onClick={() => setTab("contests")}
-              className="h-9 w-9 shrink-0 grid place-items-center rounded-full border border-night-line bg-night-card text-zinc-300 active:scale-95"
+              className="h-9 w-9 shrink-0 grid place-items-center rounded-full border border-ink-line bg-ink-card text-zinc-300 active:scale-95"
               aria-label="Back to contests"
               data-testid="back-home-btn"
             >
@@ -316,7 +321,7 @@ export default function UserApp() {
               </div>
             </div>
             <a href={update.latest.apk_url} target="_blank" rel="noopener noreferrer"
-              className="ml-auto bg-emerald-500 hover:bg-emerald-400 text-emerald-950 font-extrabold text-xs px-4 py-2.5 rounded-full active:scale-95"
+              className="ml-auto bg-turf hover:bg-emerald-400 text-white font-extrabold text-xs px-4 py-2.5 rounded-full active:scale-95"
               data-testid="update-download-btn">
               Update now
             </a>
@@ -329,6 +334,19 @@ export default function UserApp() {
           <TabsContent value="contests" className="mt-0">
             {justJoined && <SuccessBanner entry={justJoined} onClose={() => setJustJoined(null)} />}
 
+            <SportStrip active={sport} onSelect={setSport} />
+
+            {sport !== "cricket" ? (
+              <TurfCard className="mt-4 p-8 text-center" edge="neon" testid="sport-soon">
+                <div className="font-heading text-[17px] font-extrabold uppercase tracking-tight text-zinc-100">
+                  {(SPORT_LABELS[sport] || sport) + " is not open yet"}
+                </div>
+                <p className="text-[12px] text-zinc-500 mt-1 max-w-sm mx-auto">
+                  Cricket has full points, contests and settlements today. The other sports arrive on the same Turf screens — no redesign needed.
+                </p>
+              </TurfCard>
+            ) : (
+              <>
             <MatchCarousel matches={stripMatches} selectedId={matchFilter} onSelect={setMatchFilter} />
 
             <div className="grid grid-cols-2 gap-3 mt-4">
@@ -339,9 +357,9 @@ export default function UserApp() {
             {matchFilter && (
               <div className="mt-4 flex items-center gap-2 text-xs" data-testid="match-filter-chip">
                 <span className="font-bold uppercase tracking-widest text-zinc-500">Showing</span>
-                <span className="inline-flex items-center gap-2 rounded-full bg-gold/15 border border-gold/40 px-3 py-1 font-extrabold text-gold">
+                <span className="inline-flex items-center gap-2 rounded-full bg-turf/15 border border-turf/40 px-3 py-1 font-extrabold text-turf">
                   {filterLabel}
-                  <button type="button" onClick={() => setMatchFilter(null)} className="text-gold/80 hover:text-gold" aria-label="Clear match filter" data-testid="match-filter-clear">
+                  <button type="button" onClick={() => setMatchFilter(null)} className="text-turf/80 hover:text-turf" aria-label="Clear match filter" data-testid="match-filter-clear">
                     <X size={13} weight="bold" />
                   </button>
                 </span>
@@ -349,22 +367,26 @@ export default function UserApp() {
             )}
 
             <WinnersBoard winners={winners} />
-            {shownContests.length === 0 ? (
-              <EmptyState
-                title={matchFilter ? "No contests for this match" : "No contests yet"}
-                body={matchFilter ? "Pick another match, or clear the filter to see everything open." : "The admin hasn't dropped any contest. Check back soon."}
-              />
-            ) : (
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5 mt-2">
-                {shownContests.map((c) => (
-                  <ContestCard
-                    key={c.id}
-                    contest={c}
-                    onJoin={() => { setJoinTeam(null); setJoinContest(c); }}
-                    onFantasy={() => { setTab("fantasy"); setFocusMatch(c.match_id || null); }}
-                  />
-                ))}
-              </div>
+            <ContestLobby
+              contests={shownContests}
+              matchLabel={filterLabel || "All matches"}
+              columns="md:grid-cols-2 lg:grid-cols-3"
+              empty={
+                <EmptyState
+                  title={matchFilter ? "No contests for this match" : "No contests yet"}
+                  body={matchFilter ? "Pick another match, or clear the filter to see everything open." : "The admin hasn't dropped any contest. Check back soon."}
+                />
+              }
+              renderItem={(c) => (
+                <ContestCard
+                  key={c.id}
+                  contest={c}
+                  onJoin={() => { setJoinTeam(null); setJoinContest(c); }}
+                  onFantasy={() => { setTab("fantasy"); setFocusMatch(c.match_id || null); }}
+                />
+              )}
+            />
+              </>
             )}
           </TabsContent>
 
@@ -439,23 +461,23 @@ export default function UserApp() {
 
           <TabsContent value="wallet" className="mt-6">
             <div className="grid md:grid-cols-3 gap-5">
-              <div className="md:col-span-1 bg-gradient-to-br from-emerald-600 to-emerald-800 text-white rounded-lg p-6 border border-emerald-700" data-section="bonus">
+              <div className="md:col-span-1 bg-gradient-to-br from-turf to-emerald-800 text-white rounded-lg p-6 border border-emerald-700" data-section="bonus">
                 <div className="text-xs font-bold uppercase tracking-widest opacity-80">Wallet balance</div>
                 <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2" data-testid="wallet-balance">
                   {money(user?.wallet_balance)}
                 </div>
                 {Number(user?.bonus_balance || 0) > 0 && (
-                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-gold/15 border border-gold/30 px-3 py-1.5" data-testid="bonus-chip">
-                    <Coins size={14} weight="fill" className="text-gold" />
-                    <span className="text-xs font-extrabold text-gold tabular">{money(user.bonus_balance)} bonus</span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-gold/70">entry fees only</span>
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-turf/15 border border-turf/30 px-3 py-1.5" data-testid="bonus-chip">
+                    <Coins size={14} weight="fill" className="text-turf" />
+                    <span className="text-xs font-extrabold text-turf tabular">{money(user.bonus_balance)} bonus</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-turf/70">entry fees only</span>
                   </div>
                 )}
                 <Button
                   onClick={() => setTopUpOpen(true)}
                   disabled={!canTopUp}
                   title={canTopUp ? "" : "The organiser has not set up a payment method yet"}
-                  className="mt-6 w-full bg-emerald-400 text-emerald-950 hover:bg-emerald-300 font-bold rounded-md active:scale-95"
+                  className="mt-6 w-full bg-emerald-400 text-white hover:bg-emerald-300 font-bold rounded-md active:scale-95"
                   data-testid="add-money-btn"
                 >
                   <PlusCircle size={18} weight="bold" className="mr-1" /> Add money
@@ -591,7 +613,7 @@ function TermsGate({ legal, locked, onAccepted, onClose }) {
           {!locked && (
             <Button variant="outline" onClick={onClose} data-testid="terms-close">Close</Button>
           )}
-          <Button disabled={busy || !age} onClick={accept} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="terms-accept-btn">
+          <Button disabled={busy || !age} onClick={accept} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="terms-accept-btn">
             <ShieldCheck size={16} weight="bold" className="mr-1" /> {busy ? "Saving…" : "I accept, continue"}
           </Button>
         </DialogFooter>
@@ -619,12 +641,12 @@ function QuickAction({ icon: Icon, label, hint, onClick, testid }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center justify-between gap-2 rounded-2xl border border-night-line bg-night-card px-4 py-4 text-left hover:border-gold/50 active:scale-[0.98] transition-all"
+      className="flex items-center justify-between gap-2 rounded-2xl border border-ink-line bg-ink-card px-4 py-4 text-left hover:border-turf/50 active:scale-[0.98] transition-all"
       data-testid={testid}
     >
       <span className="min-w-0">
         <span className="flex items-center gap-2 font-heading text-[15px] font-extrabold text-zinc-50 truncate">
-          <Icon size={17} weight="fill" className="text-gold shrink-0" /> {label}
+          <Icon size={17} weight="fill" className="text-turf shrink-0" /> {label}
         </span>
         <span className="block text-[11px] text-zinc-500 mt-0.5 truncate">{hint}</span>
       </span>
@@ -678,7 +700,7 @@ function ContestCard({ contest, onJoin, onFantasy }) {
       {contest.max_participants > 0 && (
         <div className="mt-4" data-testid={`spots-${contest.id}`}>
           <div className="flex items-baseline gap-2 text-[11px] tabular">
-            <span className={`font-extrabold ${contest.participants_count >= contest.max_participants * 0.9 ? "text-red-400" : "text-gold"}`}>
+            <span className={`font-extrabold ${contest.participants_count >= contest.max_participants * 0.9 ? "text-red-400" : "text-turf"}`}>
               {Math.max(contest.max_participants - contest.participants_count, 0).toLocaleString("en-IN")} left
             </span>
             <span className="text-zinc-600">|</span>
@@ -686,7 +708,7 @@ function ContestCard({ contest, onJoin, onFantasy }) {
             <span className="ml-auto text-zinc-500">{fillPct(contest)}% full</span>
           </div>
           <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden" role="presentation">
-            <div className="h-full rounded-full bg-gold transition-[width] duration-500" style={{ width: `${Math.max(fillPct(contest), 2)}%` }} data-testid={`spots-bar-${contest.id}`} />
+            <div className="h-full rounded-full bg-turf transition-[width] duration-500" style={{ width: `${Math.max(fillPct(contest), 2)}%` }} data-testid={`spots-bar-${contest.id}`} />
           </div>
         </div>
       )}
@@ -695,17 +717,17 @@ function ContestCard({ contest, onJoin, onFantasy }) {
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Entry fee</div>
           <div className="font-heading text-xl font-extrabold text-zinc-950 tabular mt-1">{money(contest.entry_fee)}</div>
         </div>
-        <div className="bg-gold-soft border border-gold/25 rounded p-3">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-gold">Prize pool</div>
-          <CountUp value={contest.prize_pool} fromZero duration={1100} className="block font-heading text-xl font-extrabold text-gold mt-1" />
+        <div className="bg-turf-red-soft border border-turf/25 rounded p-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-turf">Prize pool</div>
+          <CountUp value={contest.prize_pool} fromZero duration={1100} className="block font-heading text-xl font-extrabold text-turf mt-1" />
         </div>
       </div>
       {contest.prize_breakdown?.length > 0 && (
-        <div className="mt-3 rounded-md border border-gold/20 bg-gold/10 px-3 py-2" data-testid={`prize-breakdown-${contest.id}`}>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-gold mb-1.5">Prize breakdown</div>
+        <div className="mt-3 rounded-md border border-turf/20 bg-turf/10 px-3 py-2" data-testid={`prize-breakdown-${contest.id}`}>
+          <div className="text-[10px] font-bold uppercase tracking-widest text-turf mb-1.5">Prize breakdown</div>
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
             {contest.prize_breakdown.map((item) => (
-              <span key={item.rank} className="text-zinc-600">Rank <b className="text-zinc-900">{item.rank}</b>: <b className="text-gold">{money(item.amount)}</b></span>
+              <span key={item.rank} className="text-zinc-600">Rank <b className="text-zinc-900">{item.rank}</b>: <b className="text-turf">{money(item.amount)}</b></span>
             ))}
           </div>
         </div>
@@ -720,7 +742,7 @@ function ContestCard({ contest, onJoin, onFantasy }) {
           <Button
             disabled={closed}
             onClick={onFantasy}
-            className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95"
+            className="rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95"
             data-testid={`fantasy-build-btn-${contest.id}`}
           >
             <Flag size={16} weight="fill" className="mr-1" /> {closed ? "Contest closed" : "Build XI & join"}
@@ -739,7 +761,7 @@ function ContestCard({ contest, onJoin, onFantasy }) {
         <Button
           disabled={closed}
           onClick={onJoin}
-          className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95"
+          className="rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95"
           data-testid={`join-btn-${contest.id}`}
         >
           Join contest
@@ -864,7 +886,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
             <div className="text-xs font-bold uppercase tracking-widest text-emerald-800">Available to pay</div>
             <div className="font-heading text-xl font-extrabold text-emerald-900 tabular" data-testid="wallet-pay-balance">{money(spendable)}</div>
             {Number(bonusBalance || 0) > 0 && (
-              <div className="text-[11px] font-bold text-gold mt-0.5" data-testid="wallet-pay-bonus">
+              <div className="text-[11px] font-bold text-turf mt-0.5" data-testid="wallet-pay-bonus">
                 includes {money(bonusBalance)} bonus · applied first
               </div>
             )}
@@ -875,7 +897,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
             )}
           </div>
           {canWallet ? (
-            <Button disabled={walletPaying} onClick={payFromWallet} className="shrink-0 bg-emerald-600 hover:bg-emerald-700 font-bold rounded-full active:scale-95" data-testid="pay-from-wallet-btn">
+            <Button disabled={walletPaying} onClick={payFromWallet} className="shrink-0 bg-turf hover:bg-turf-red-dark font-bold rounded-full active:scale-95" data-testid="pay-from-wallet-btn">
               <Lightning size={16} weight="fill" className="mr-1" /> {walletPaying ? "Paying..." : `Pay ${money(fee)}`}
             </Button>
           ) : (
@@ -893,7 +915,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
               <ShieldCheck size={16} weight="fill" /> Instant entry · Secured by Razorpay
             </div>
             <p className="text-sm text-zinc-300 mt-2">UPI, cards, net banking & wallets. Your play link unlocks the moment payment succeeds — no waiting for approval.</p>
-            <Button disabled={paying} onClick={payOnline} className="mt-4 w-full h-12 rounded-full bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold text-base active:scale-95" data-testid="razorpay-pay-btn">
+            <Button disabled={paying} onClick={payOnline} className="mt-4 w-full h-12 rounded-full bg-turf hover:bg-emerald-400 text-zinc-950 font-extrabold text-base active:scale-95" data-testid="razorpay-pay-btn">
               <Lightning size={18} weight="fill" className="mr-1" /> {paying ? "Opening secure checkout..." : `Pay ${money(contest.entry_fee)} & join now`}
             </Button>
             {manualOn && (
@@ -922,7 +944,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
                   <button type="button" onClick={copyUpi} className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800" title="Copy" data-testid="copy-upi-btn"><Copy size={16} weight="bold" /></button>
                 </div>
                 {config.payee_name && <div className="text-xs text-emerald-800">{config.payee_name}</div>}
-                <a href={upiLink} className="mt-2 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-md" data-testid="pay-upi-link">
+                <a href={upiLink} className="mt-2 inline-flex items-center gap-1.5 bg-turf hover:bg-turf-red-dark text-white text-xs font-bold px-3 py-1.5 rounded-md" data-testid="pay-upi-link">
                   <DeviceMobile size={14} weight="bold" /> Pay {money(contest.entry_fee)} in UPI app
                 </a>
               </div>
@@ -934,7 +956,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
             </div>
             <div>
               <Label className="text-xs font-bold uppercase tracking-widest text-zinc-500">Payment screenshot</Label>
-              <label className="mt-2 flex items-center justify-center gap-2 h-24 border-2 border-dashed border-zinc-300 hover:border-emerald-500 rounded-md cursor-pointer transition-colors" data-testid="upload-zone">
+              <label className="mt-2 flex items-center justify-center gap-2 h-24 border-2 border-dashed border-zinc-300 hover:border-turf rounded-md cursor-pointer transition-colors" data-testid="upload-zone">
                 <UploadSimple size={22} weight="bold" className="text-zinc-500" />
                 <span className="text-sm text-zinc-600 font-semibold">{file ? file.name : "Click to upload (PNG/JPG, ≤5MB)"}</span>
                 <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} data-testid="file-input" />
@@ -945,7 +967,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="cancel-join">Cancel</Button>
           {manualOn && showManual && (
-            <Button disabled={busy} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="submit-entry-btn">
+            <Button disabled={busy} onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="submit-entry-btn">
               {busy ? "Submitting..." : "Submit for approval"}
             </Button>
           )}
@@ -1127,7 +1149,7 @@ function NotificationBell({ refreshToken }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className={`text-sm font-bold truncate ${n.read ? "text-zinc-700" : "text-zinc-950"}`}>{n.title}</span>
-                    {!n.read && <span className="shrink-0 w-2 h-2 rounded-full bg-emerald-500" />}
+                    {!n.read && <span className="shrink-0 w-2 h-2 rounded-full bg-turf" />}
                   </div>
                   {n.body && <div className="text-xs text-zinc-600 mt-0.5 leading-relaxed">{n.body}</div>}
                   <div className="text-[10px] text-zinc-400 uppercase tracking-wider mt-1">{new Date(n.created_at).toLocaleString()}</div>
@@ -1231,7 +1253,7 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
                 key={p}
                 type="button"
                 onClick={() => setAmt(String(p))}
-                className={`px-4 py-2 rounded-full border text-sm font-bold tabular transition-colors ${String(p) === amt ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
+                className={`px-4 py-2 rounded-full border text-sm font-bold tabular transition-colors ${String(p) === amt ? "bg-turf text-white border-turf" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
                 data-testid={`topup-preset-${p}`}
               >
                 {money(p)}
@@ -1277,7 +1299,7 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="topup-cancel">Cancel</Button>
-          <Button disabled={busy || (!online && !upi)} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="topup-pay-btn">
+          <Button disabled={busy || (!online && !upi)} onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="topup-pay-btn">
             {mode === "online" ? (
               <><Lightning size={16} weight="fill" className="mr-1" /> {busy ? "Opening checkout..." : "Proceed to pay"}</>
             ) : (
@@ -1319,7 +1341,7 @@ function TopupRequests({ items }) {
 
 function SuccessBanner({ entry, onClose }) {
   return (
-    <div className="relative overflow-hidden mb-6 rounded-lg border border-emerald-500 bg-emerald-600 text-white p-6 sm:p-7 animate-in fade-in slide-in-from-top-2 duration-500" data-testid="success-banner">
+    <div className="relative overflow-hidden mb-6 rounded-lg border border-turf bg-turf text-white p-6 sm:p-7 animate-in fade-in slide-in-from-top-2 duration-500" data-testid="success-banner">
       <Confetti size={140} weight="duotone" className="absolute -right-6 -top-8 text-emerald-300/40 pointer-events-none" />
       <button type="button" onClick={onClose} className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-white/15" aria-label="Dismiss" data-testid="success-banner-close"><X size={18} weight="bold" /></button>
       <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative">
@@ -1346,7 +1368,7 @@ function WinnersBoard({ winners }) {
   if (!winners.length) return null;
   return (
     <div className="mb-6 bg-zinc-950 text-white rounded-lg p-5 border border-zinc-800" data-testid="winners-board">
-      <div className="flex items-center gap-2 text-gold text-xs font-bold uppercase tracking-widest">
+      <div className="flex items-center gap-2 text-turf text-xs font-bold uppercase tracking-widest">
         <Trophy size={16} weight="fill" /> Recent winners
       </div>
       <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1356,7 +1378,7 @@ function WinnersBoard({ winners }) {
               <div className="font-heading font-bold truncate">{w.user_name}</div>
               <div className="text-xs text-zinc-400 truncate">{w.contest_title}</div>
             </div>
-            <CountUp value={w.winner_prize} fromZero duration={1100} className="font-heading font-extrabold text-gold ml-3" />
+            <CountUp value={w.winner_prize} fromZero duration={1100} className="font-heading font-extrabold text-turf ml-3" />
           </div>
         ))}
       </div>
@@ -1484,7 +1506,7 @@ function WalletHistory({ items }) {
                 <div className="text-sm font-semibold text-zinc-900 flex items-center gap-2">
                   {t.note}
                   {t.kind === "bonus" && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-gold/15 border border-gold/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-gold" data-testid={`wallet-kind-${t.id}`}>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-turf/15 border border-turf/30 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-turf" data-testid={`wallet-kind-${t.id}`}>
                       <Coins size={10} weight="fill" /> bonus
                     </span>
                   )}
@@ -1667,7 +1689,7 @@ function PlaySafely({ safety, reload, onOpenWallet }) {
           <div className="flex flex-wrap gap-1.5 mt-2">
             {[0, 100, 500, 1000, 2500].map((v) => (
               <button key={v} type="button" onClick={() => setLimit(v ? String(v) : "")}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${String(v) === String(limit || 0) ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold border transition-colors ${String(v) === String(limit || 0) ? "bg-turf text-white border-turf" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
                 data-testid={`limit-chip-${v}`}>{v ? money(v) : "No limit"}</button>
             ))}
           </div>
@@ -1676,7 +1698,7 @@ function PlaySafely({ safety, reload, onOpenWallet }) {
           <Input value={rc} onChange={(e) => setRc(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric"
             placeholder="0 = off" className="mt-1.5 tabular" data-testid="reality-input" />
 
-          <Button onClick={saveLimits} disabled={busy} className="mt-4 w-full rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="save-limits-btn">
+          <Button onClick={saveLimits} disabled={busy} className="mt-4 w-full rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="save-limits-btn">
             <CheckCircle size={16} weight="bold" className="mr-1" /> Save my limits
           </Button>
           {safety.kyc_required_for_payouts && safety.kyc.status !== "verified" && (
@@ -1846,10 +1868,10 @@ function SupportDesk() {
         maxLength={2000}
         rows={3}
         placeholder="What happened? Include the contest or withdrawal reference if you have it."
-        className="mt-2 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        className="mt-2 w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-turf"
         data-testid="ticket-message"
       />
-      <Button onClick={send} disabled={busy || !canSend} className="mt-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold" data-testid="ticket-send-btn">
+      <Button onClick={send} disabled={busy || !canSend} className="mt-3 rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold" data-testid="ticket-send-btn">
         <PaperPlaneRight size={16} weight="fill" className="mr-1" /> {busy ? "Sending…" : "Send to help desk"}
       </Button>
 

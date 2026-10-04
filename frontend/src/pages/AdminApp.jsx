@@ -232,7 +232,7 @@ function ContestsPanel() {
           <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Contests</h1>
           <p className="text-zinc-500 mt-1">Create contests with any external play link.</p>
         </div>
-        <Button onClick={() => { setEditing(null); setForm(blank); setOpen(true); }} className="bg-emerald-600 hover:bg-emerald-700 font-bold rounded-md" data-testid="new-contest-btn">
+        <Button onClick={() => { setEditing(null); setForm(blank); setOpen(true); }} className="bg-turf hover:bg-turf-red-dark font-bold rounded-md" data-testid="new-contest-btn">
           <Plus size={16} weight="bold" className="mr-1" /> New contest
         </Button>
       </div>
@@ -321,7 +321,7 @@ function ContestsPanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={create} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="create-contest-submit">{editing ? "Save changes" : "Create"}</Button>
+            <Button onClick={create} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="create-contest-submit">{editing ? "Save changes" : "Create"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -421,7 +421,7 @@ function EntriesPanel() {
                     {e.screenshot_path && <Button size="sm" variant="outline" onClick={() => setPreview(e)} data-testid={`view-screenshot-${e.id}`}><Eye size={14} /></Button>}
                     {e.status === "pending" && (
                       <>
-                        <Button size="sm" onClick={() => decide(e, "approve")} className="bg-emerald-600 hover:bg-emerald-700" data-testid={`approve-entry-${e.id}`}><Check size={14} /></Button>
+                        <Button size="sm" onClick={() => decide(e, "approve")} className="bg-turf hover:bg-turf-red-dark" data-testid={`approve-entry-${e.id}`}><Check size={14} /></Button>
                         <Button size="sm" variant="destructive" onClick={() => decide(e, "reject")} data-testid={`reject-entry-${e.id}`}><X size={14} /></Button>
                       </>
                     )}
@@ -529,7 +529,7 @@ function TopupsPanel() {
                         className="w-32 text-xs rounded border border-zinc-200 px-2 py-1"
                         data-testid={`topup-note-${t.id}`}
                       />
-                      <Button size="sm" onClick={() => decide(t, "approve")} className="bg-emerald-600 hover:bg-emerald-700" data-testid={`topup-approve-${t.id}`}>
+                      <Button size="sm" onClick={() => decide(t, "approve")} className="bg-turf hover:bg-turf-red-dark" data-testid={`topup-approve-${t.id}`}>
                         <Check size={14} className="mr-1" /> Credit
                       </Button>
                       <Button size="sm" variant="destructive" onClick={() => decide(t, "reject")} data-testid={`topup-reject-${t.id}`}>Reject</Button>
@@ -634,7 +634,7 @@ function WithdrawalsPanel() {
                           <Lightning size={14} weight="fill" className="mr-1" />{busyId === w.id ? "Sending..." : "Pay via Razorpay"}
                         </Button>
                       )}
-                      <Button size="sm" onClick={() => decide(w, "approve")} className="bg-emerald-600 hover:bg-emerald-700" data-testid={`approve-wd-${w.id}`}><Check size={14} className="mr-1" />Paid</Button>
+                      <Button size="sm" onClick={() => decide(w, "approve")} className="bg-turf hover:bg-turf-red-dark" data-testid={`approve-wd-${w.id}`}><Check size={14} className="mr-1" />Paid</Button>
                       <Button size="sm" variant="destructive" onClick={() => decide(w, "reject")} data-testid={`reject-wd-${w.id}`}><X size={14} /></Button>
                     </div>
                   )}
@@ -677,7 +677,7 @@ function UsersPanel() {
           <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Users</h1>
           <p className="text-zinc-500 mt-1">Mobile numbers are visible only to you (admin). Add, block or remove users.</p>
         </div>
-        <Button onClick={() => setAddOpen(true)} className="bg-emerald-600 hover:bg-emerald-700 font-bold rounded-md" data-testid="add-user-btn">
+        <Button onClick={() => setAddOpen(true)} className="bg-turf hover:bg-turf-red-dark font-bold rounded-md" data-testid="add-user-btn">
           <Plus size={16} weight="bold" className="mr-1" /> Add user
         </Button>
       </div>
@@ -749,7 +749,7 @@ function AddUserDialog({ open, onClose, onDone }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="add-user-submit">Add</Button>
+          <Button onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="add-user-submit">Add</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -777,7 +777,7 @@ function WalletDialog({ user, onClose, onDone }) {
         <Field label="Note (optional)"><Input value={note} onChange={(e) => setNote(e.target.value)} data-testid="wallet-note" /></Field>
         <DialogFooter>
           <Button variant="destructive" onClick={() => adjust(-1)} data-testid="wallet-debit">Debit</Button>
-          <Button onClick={() => adjust(1)} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="wallet-credit">Credit</Button>
+          <Button onClick={() => adjust(1)} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="wallet-credit">Credit</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -830,7 +830,7 @@ function PaymentSettingsPanel() {
             {rzp?.razorpay_enabled ? <>Key <span className="tabular font-semibold" data-testid="razorpay-key-id">{rzp.key_id}</span> · payments auto-approve entries instantly.</> : "Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the backend environment."}
           </div>
         </div>
-        {rzp?.razorpay_enabled && <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold px-3 py-1">{rzp.key_id.startsWith("rzp_test") ? "TEST MODE" : "LIVE"}</span>}
+        {rzp?.razorpay_enabled && <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-turf/20 text-emerald-300 text-xs font-bold px-3 py-1">{rzp.key_id.startsWith("rzp_test") ? "TEST MODE" : "LIVE"}</span>}
       </div>
       <div className="grid lg:grid-cols-2 gap-6 mt-6">
         <div className="bg-white border border-zinc-200 rounded-lg p-6 grid gap-4">
@@ -854,14 +854,14 @@ function PaymentSettingsPanel() {
             <div className="text-xs text-zinc-500">Enter your RazorpayX account number to pay winners to their UPI with one click. Find it in RazorpayX Dashboard → Account Details (a 10–16 digit virtual account number).</div>
             <Input value={form.razorpayx_account_number} onChange={(e) => setForm({ ...form, razorpayx_account_number: e.target.value })} placeholder="e.g. 2323230012345678" className="tabular" data-testid="settings-rzpx-account-input" />
           </div>
-          <Button onClick={save} className="bg-emerald-600 hover:bg-emerald-700 font-bold w-fit" data-testid="settings-save-btn">Save settings</Button>
+          <Button onClick={save} className="bg-turf hover:bg-turf-red-dark font-bold w-fit" data-testid="settings-save-btn">Save settings</Button>
         </div>
         <div className="bg-white border border-zinc-200 rounded-lg p-6 flex flex-col items-center justify-center gap-3">
           <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">{qrPath ? "Your uploaded QR" : "Auto-generated QR"}</div>
           {qrPath ? <ScreenshotViewer path={qrPath} testId="settings-qr-image" className="w-52 rounded-md border border-zinc-200" /> : form.upi_id ? <QRCodeSVG value={upiLink} size={180} data-testid="settings-qr" /> : <div className="text-sm text-zinc-400">Enter UPI ID</div>}
           <div className="font-heading font-extrabold text-emerald-800 tabular" data-testid="settings-upi-preview">{form.upi_id || "—"}</div>
           <div className="flex gap-2 mt-2">
-            <label className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 py-2 rounded-md cursor-pointer" data-testid="upload-qr-label">
+            <label className="inline-flex items-center gap-1.5 bg-turf hover:bg-turf-red-dark text-white text-sm font-bold px-4 py-2 rounded-md cursor-pointer" data-testid="upload-qr-label">
               <UploadSimple size={16} weight="bold" /> {busy ? "Uploading..." : qrPath ? "Replace QR" : "Upload QR"}
               <input type="file" accept="image/*" className="hidden" disabled={busy} onChange={(e) => uploadQr(e.target.files?.[0])} data-testid="upload-qr-input" />
             </label>

@@ -119,7 +119,7 @@ export default function AdminGuardrails() {
       </section>
 
       <div className="flex justify-end">
-        <Button disabled={busy} onClick={save} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="guard-save-btn">
+        <Button disabled={busy} onClick={save} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="guard-save-btn">
           <Check size={16} weight="bold" className="mr-1" /> {busy ? "Saving…" : "Save guardrails"}
         </Button>
       </div>

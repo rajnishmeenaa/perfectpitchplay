@@ -40,7 +40,7 @@ export function ReferralCard() {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-heading font-extrabold text-zinc-950 flex items-center gap-2">
-            <Gift size={18} weight="fill" className="text-gold" /> Invite friends
+            <Gift size={18} weight="fill" className="text-turf" /> Invite friends
           </h3>
           <p className="text-sm text-zinc-500 mt-1">
             {rewardsOn
@@ -49,13 +49,13 @@ export function ReferralCard() {
           </p>
         </div>
         <div className="text-right shrink-0">
-          <div className="font-heading text-2xl font-extrabold text-gold tabular leading-none">{data.code}</div>
+          <div className="font-heading text-2xl font-extrabold text-turf tabular leading-none">{data.code}</div>
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mt-1">your code</div>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mt-4">
-        <Button size="sm" onClick={share} className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold active:scale-95" data-testid="referral-share-btn">
+        <Button size="sm" onClick={share} className="rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold active:scale-95" data-testid="referral-share-btn">
           <WhatsappLogo size={15} weight="fill" className="mr-1.5" /> Share invite
         </Button>
         <Button size="sm" variant="outline" onClick={copy} className="rounded-full font-bold" data-testid="referral-copy-btn">
@@ -102,7 +102,7 @@ export function BadgeShelf() {
     <div className="bg-white border border-zinc-200 rounded-lg p-5" data-testid="badge-shelf">
       <div className="flex items-center justify-between gap-3">
         <h3 className="font-heading font-extrabold text-zinc-950 flex items-center gap-2">
-          <Trophy size={18} weight="fill" className="text-gold" /> Badge cabinet
+          <Trophy size={18} weight="fill" className="text-turf" /> Badge cabinet
         </h3>
         <span className="text-xs font-bold uppercase tracking-widest text-zinc-500 tabular" data-testid="badge-count">
           {data.earned_count} of {data.badges.length} earned · {data.week_streak}-week streak
@@ -114,11 +114,11 @@ export function BadgeShelf() {
           return (
             <div
               key={b.key}
-              className={`rounded-lg border px-3 py-3 ${b.earned ? "border-gold/40 bg-gold/10" : "border-zinc-200 bg-zinc-50 opacity-60"}`}
+              className={`rounded-lg border px-3 py-3 ${b.earned ? "border-turf/40 bg-turf/10" : "border-zinc-200 bg-zinc-50 opacity-60"}`}
               data-testid={`badge-${b.key}`}
             >
               {b.earned
-                ? <Icon size={20} weight="fill" className="text-gold" />
+                ? <Icon size={20} weight="fill" className="text-turf" />
                 : <Lock size={20} weight="bold" className="text-zinc-400" />}
               <div className="text-[12px] font-extrabold text-zinc-900 mt-2 leading-tight">{b.label}</div>
               <div className="text-[11px] text-zinc-500 mt-0.5">{b.hint}</div>
@@ -141,13 +141,13 @@ export function SeasonLadder() {
   }, []);
 
   if (!data) return null;
-  const medal = (rank) => (rank === 1 ? "bg-gold text-night" : rank === 2 ? "bg-zinc-300 text-night" : rank === 3 ? "bg-orange-300 text-night" : "bg-zinc-100 text-zinc-600");
+  const medal = (rank) => (rank === 1 ? "bg-turf text-ink" : rank === 2 ? "bg-zinc-300 text-ink" : rank === 3 ? "bg-orange-300 text-ink" : "bg-zinc-100 text-zinc-600");
 
   return (
     <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden" data-testid="season-ladder">
       <div className="px-5 py-4 flex items-center justify-between gap-3 border-b border-zinc-100">
         <h3 className="font-heading font-extrabold text-zinc-950 flex items-center gap-2">
-          <ChartBar size={18} weight="fill" className="text-gold" /> {data.season} ranking
+          <ChartBar size={18} weight="fill" className="text-turf" /> {data.season} ranking
         </h3>
         <span className="text-xs text-zinc-500 tabular">{data.total_players} players</span>
       </div>
@@ -179,7 +179,7 @@ export function SeasonLadder() {
       )}
       {data.me && !data.rows.some((r) => r.is_me) && (
         <div className="px-5 py-3 border-t border-zinc-100 flex items-center gap-3 bg-emerald-50" data-testid="ladder-me">
-          <span className="w-7 h-7 shrink-0 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px] font-extrabold tabular">{data.me.rank}</span>
+          <span className="w-7 h-7 shrink-0 rounded-full bg-turf text-white flex items-center justify-center text-[11px] font-extrabold tabular">{data.me.rank}</span>
           <span className="flex-1 text-sm font-bold text-zinc-900">You</span>
           <span className="font-heading font-extrabold text-zinc-950 tabular text-sm">{data.me.points} pts</span>
         </div>

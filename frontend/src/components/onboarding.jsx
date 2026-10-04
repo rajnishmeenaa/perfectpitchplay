@@ -81,19 +81,19 @@ const STEPS = [
     icon: Ticket,
     title: "Pick a contest",
     body: "Mega leagues, head-to-heads or a private contest from a friend's code. Entry fee and prize pool are always shown up front.",
-    accent: "text-gold",
+    accent: "text-turf",
   },
   {
     icon: Flag,
     title: "Build your XI",
     body: "11 players, 100 credits. Captain scores 2x, vice-captain 1.5x. Auto-pick ranks the squad for you if you're short on time.",
-    accent: "text-pitch-bright",
+    accent: "text-neon-bright",
   },
   {
     icon: Trophy,
     title: "Watch live, get paid",
     body: "Ball-by-ball centre with your rank after every over. When the admin settles the contest, winnings land in your wallet for UPI withdrawal.",
-    accent: "text-gold-light",
+    accent: "text-trophy-light",
   },
 ];
 
@@ -106,9 +106,9 @@ export function OnboardingTour({ open, onClose }) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md border-night-line bg-night-card text-zinc-900 rounded-2xl" data-testid="onboarding-tour">
+      <DialogContent className="max-w-md border-ink-line bg-ink-card text-zinc-900 rounded-2xl" data-testid="onboarding-tour">
         <div className="relative pt-2">
-          <div className="absolute -top-6 -right-4 h-28 w-28 rounded-full bg-gold-soft blur-2xl pointer-events-none" />
+          <div className="absolute -top-6 -right-4 h-28 w-28 rounded-full bg-turf-red-soft blur-2xl pointer-events-none" />
           <div className="glass inline-flex h-14 w-14 items-center justify-center rounded-2xl">
             <Icon size={26} weight="duotone" className={step.accent} />
           </div>
@@ -125,7 +125,7 @@ export function OnboardingTour({ open, onClose }) {
             {STEPS.map((_, n) => (
               <span
                 key={n}
-                className={`h-1.5 rounded-full transition-all ${n === i ? "w-6 bg-gold" : "w-1.5 bg-zinc-300"}`}
+                className={`h-1.5 rounded-full transition-all ${n === i ? "w-6 bg-turf" : "w-1.5 bg-zinc-300"}`}
               />
             ))}
           </div>
@@ -136,7 +136,7 @@ export function OnboardingTour({ open, onClose }) {
             <Button
               size="sm"
               onClick={() => (last ? onClose() : setI(i + 1))}
-              className="rounded-full bg-gold px-5 text-night font-extrabold hover:bg-gold-light shadow-glow-gold active:scale-95 transition-transform"
+              className="rounded-full bg-turf px-5 text-ink font-extrabold hover:bg-turf-fire shadow-glow-turf active:scale-95 transition-transform"
               data-testid="onboarding-next"
             >
               {last ? "Enter the lobby" : "Next"}

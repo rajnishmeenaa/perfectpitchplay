@@ -71,19 +71,19 @@ export default function Landing() {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2.5 font-heading font-extrabold text-lg text-zinc-950" data-testid="brand-logo">
             <img src={LOGO} alt="PitchPlay" className="h-9 w-9 rounded-xl object-cover ring-1 ring-zinc-200" />
-            <span className="tracking-tight">Pitch<span className="text-gold-grad">Play</span></span>
+            <span className="tracking-tight">Pitch<span className="text-turf-grad">Play</span></span>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMode("login")}
-              className="text-sm font-semibold text-zinc-700 hover:text-gold transition-colors"
+              className="text-sm font-semibold text-zinc-700 hover:text-turf transition-colors"
               data-testid="nav-login-btn"
             >
               Login
             </button>
             <Button
               onClick={() => setMode("signup")}
-              className="rounded-full bg-gold hover:bg-gold-light text-night font-bold active:scale-95 transition-transform shadow-glow-gold"
+              className="rounded-full bg-turf hover:bg-turf-fire text-ink font-bold active:scale-95 transition-transform shadow-glow-turf"
               data-testid="nav-signup-btn"
             >
               Sign up
@@ -97,15 +97,15 @@ export default function Landing() {
         <div className="lg:col-span-3">
           <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-card">
             <img src={HERO} alt="Stadium under lights" className="w-full h-[420px] object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-night via-night/40 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
             <div className="grain absolute inset-0 opacity-20 mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 p-10 flex flex-col justify-end">
-              <span className="inline-flex items-center gap-2 self-start bg-gold text-night text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-glow-gold">
+              <span className="inline-flex items-center gap-2 self-start bg-turf text-ink text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-glow-turf">
                 <Sparkle weight="fill" size={12} /> Live Match Centre
               </span>
               <h1 className="mt-4 font-heading text-white text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tighter leading-[1.05]">
                 Private cricket contests.<br />
-                <span className="text-gold-grad">Play the pitch, win the pot.</span>
+                <span className="text-turf-grad">Play the pitch, win the pot.</span>
               </h1>
               <p className="mt-4 text-zinc-200 text-base max-w-lg leading-relaxed">
                 Ball-by-ball scores, live rank movement, and winnings paid straight to your UPI.
@@ -120,7 +120,7 @@ export default function Landing() {
               { icon: Trophy, title: "Direct payouts", body: "Winners withdraw to UPI once the contest settles." },
             ].map(({ icon: Icon, title, body }) => (
               <div key={title} className="bg-white border border-zinc-200 rounded-lg p-5 hover:border-zinc-300 hover:-translate-y-0.5 transition-transform shadow-card">
-                <Icon size={22} weight="duotone" className="text-gold" />
+                <Icon size={22} weight="duotone" className="text-turf" />
                 <div className="font-heading font-bold text-zinc-950 mt-3">{title}</div>
                 <div className="text-sm text-zinc-500 mt-1 leading-relaxed">{body}</div>
               </div>
@@ -134,7 +134,7 @@ export default function Landing() {
               {STEPS.map(({ icon: Icon, title, body }, i) => (
                 <div key={title} className="relative glass rounded-xl p-5 overflow-hidden">
                   <div className="absolute -right-4 -top-6 font-heading text-[92px] font-extrabold text-white/5 select-none tabular">{i + 1}</div>
-                  <Icon size={26} weight="duotone" className="text-pitch" />
+                  <Icon size={26} weight="duotone" className="text-neon" />
                   <div className="font-heading font-bold text-zinc-900 mt-3">{title}</div>
                   <div className="text-sm text-zinc-500 mt-1 leading-relaxed">{body}</div>
                 </div>
@@ -148,14 +148,14 @@ export default function Landing() {
             <div className="flex items-center gap-6 border-b border-zinc-100 pb-4">
               <button
                 onClick={() => setMode("login")}
-                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "login" ? "text-gold border-b-2 border-gold -mb-[17px]" : "text-zinc-400"}`}
+                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "login" ? "text-turf border-b-2 border-turf -mb-[17px]" : "text-zinc-400"}`}
                 data-testid="tab-login"
               >
                 Login
               </button>
               <button
                 onClick={() => setMode("signup")}
-                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "signup" ? "text-gold border-b-2 border-gold -mb-[17px]" : "text-zinc-400"}`}
+                className={`font-heading text-lg font-bold pb-2 transition-colors ${mode === "signup" ? "text-turf border-b-2 border-turf -mb-[17px]" : "text-zinc-400"}`}
                 data-testid="tab-signup"
               >
                 Sign up
@@ -163,14 +163,14 @@ export default function Landing() {
               <div className="ml-auto flex items-center rounded-full border border-zinc-200 p-0.5" data-testid="auth-method-switch">
                 <button
                   onClick={() => setMethod("password")}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "password" ? "bg-night-card text-gold" : "text-zinc-500"}`}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "password" ? "bg-ink-card text-turf" : "text-zinc-500"}`}
                   data-testid="method-password"
                 >
                   Password
                 </button>
                 <button
                   onClick={() => setMethod("otp")}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "otp" ? "bg-night-card text-gold" : "text-zinc-500"}`}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "otp" ? "bg-ink-card text-turf" : "text-zinc-500"}`}
                   data-testid="method-otp"
                 >
                   OTP
@@ -190,7 +190,7 @@ export default function Landing() {
                     value={form.name}
                     onChange={(e) => setForm({ ...form, name: e.target.value })}
                     placeholder="Virat K."
-                    className="mt-2 border-zinc-200 focus-visible:ring-gold"
+                    className="mt-2 border-zinc-200 focus-visible:ring-turf"
                     data-testid="input-name"
                     required
                   />
@@ -204,7 +204,7 @@ export default function Landing() {
                     value={form.invite}
                     onChange={(e) => setForm({ ...form, invite: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6) })}
                     placeholder="6 characters from a friend"
-                    className="mt-2 border-zinc-200 focus-visible:ring-gold tracking-[0.3em] uppercase"
+                    className="mt-2 border-zinc-200 focus-visible:ring-turf tracking-[0.3em] uppercase"
                     data-testid="input-invite"
                   />
                 </div>
@@ -218,7 +218,7 @@ export default function Landing() {
                   value={form.mobile}
                   onChange={(e) => setForm({ ...form, mobile: e.target.value })}
                   placeholder="9876543210"
-                  className="mt-2 border-zinc-200 focus-visible:ring-gold tabular"
+                  className="mt-2 border-zinc-200 focus-visible:ring-turf tabular"
                   data-testid="input-mobile"
                   required
                 />
@@ -231,7 +231,7 @@ export default function Landing() {
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   placeholder="Minimum 4 characters"
-                  className="mt-2 border-zinc-200 focus-visible:ring-gold"
+                  className="mt-2 border-zinc-200 focus-visible:ring-turf"
                   data-testid="input-password"
                   required
                 />
@@ -239,7 +239,7 @@ export default function Landing() {
               <Button
                 type="submit"
                 disabled={busy}
-                className="w-full h-11 bg-gold hover:bg-gold-light text-night font-bold text-base rounded-md active:scale-[0.98] transition-transform shadow-glow-gold"
+                className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md active:scale-[0.98] transition-transform shadow-glow-turf"
                 data-testid="auth-submit-btn"
               >
                 {busy ? "Please wait..." : mode === "login" ? "Enter contest lobby" : "Create my account"}
@@ -263,7 +263,7 @@ export default function Landing() {
               className="mt-5 w-full h-11 flex items-center justify-center gap-3 rounded-md border border-zinc-300 bg-white text-zinc-800 font-bold hover:bg-zinc-50 active:scale-[0.98] transition-transform"
               data-testid="google-signin-btn"
             >
-              <GoogleLogo size={20} weight="bold" className="text-gold" />
+              <GoogleLogo size={20} weight="bold" className="text-turf" />
               Continue with Google
             </button>
             <p className="mt-3 text-xs text-zinc-400 text-center">

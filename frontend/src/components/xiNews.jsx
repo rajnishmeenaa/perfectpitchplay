@@ -267,7 +267,7 @@ export function XiPublisher({ match, players, onPublished }) {
                       className={`w-full px-2.5 py-1.5 flex items-center gap-2 text-left text-[12px] ${on ? "bg-emerald-50" : "hover:bg-zinc-50"}`}
                       data-testid={`xi-pick-${p.id}`}
                     >
-                      <span className={`w-4 h-4 rounded border grid place-items-center shrink-0 ${on ? "bg-emerald-600 border-emerald-600 text-white" : "border-zinc-300 text-transparent"}`}>
+                      <span className={`w-4 h-4 rounded border grid place-items-center shrink-0 ${on ? "bg-turf border-turf text-white" : "border-zinc-300 text-transparent"}`}>
                         <Check size={10} weight="bold" />
                       </span>
                       <span className="truncate font-semibold text-zinc-900">{p.name}</span>
@@ -285,7 +285,7 @@ export function XiPublisher({ match, players, onPublished }) {
       <Button
         onClick={publish}
         disabled={busy || sides.some((s) => (picks[s] || []).length !== 11)}
-        className="mt-4 w-full rounded-md bg-emerald-600 hover:bg-emerald-700 font-bold"
+        className="mt-4 w-full rounded-md bg-turf hover:bg-turf-red-dark font-bold"
         data-testid="xi-publish-btn"
       >
         {busy ? "Publishing…" : announced ? "Re-publish the XI" : "Publish the playing XI"}

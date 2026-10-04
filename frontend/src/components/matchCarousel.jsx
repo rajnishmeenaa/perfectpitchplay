@@ -6,7 +6,7 @@ function TeamBadge({ name, short, flip = false }) {
   const letter = ((name || short || "?").trim().charAt(0) || "?").toUpperCase();
   return (
     <span
-      className={`h-6 w-6 shrink-0 rounded-md grid place-items-center text-[11px] font-extrabold border ${flip ? "bg-gold/15 border-gold/40 text-gold" : "bg-white/5 border-night-line text-zinc-200"}`}
+      className={`h-6 w-6 shrink-0 rounded-md grid place-items-center text-[11px] font-extrabold border ${flip ? "bg-turf/15 border-turf/40 text-turf" : "bg-white/5 border-ink-line text-zinc-200"}`}
       aria-hidden="true"
     >
       {letter}
@@ -67,7 +67,7 @@ export function MatchCarousel({ matches, selectedId, onSelect }) {
             key={m.id}
             type="button"
             onClick={() => onSelect(on ? null : m.id)}
-            className={`snap-start shrink-0 w-[200px] rounded-2xl border px-4 py-3 text-left transition-colors ${on ? "border-gold bg-gold/10" : "border-night-line bg-night-card hover:border-gold/40"}`}
+            className={`snap-start shrink-0 w-[200px] rounded-2xl border px-4 py-3 text-left transition-colors ${on ? "border-turf bg-turf/10" : "border-ink-line bg-ink-card hover:border-turf/40"}`}
             data-testid={`match-card-${m.id}`}
             data-selected={on ? "true" : "false"}
           >
@@ -91,7 +91,7 @@ export function MatchCarousel({ matches, selectedId, onSelect }) {
               ) : m.locked ? (
                 <span className="text-zinc-500">Started</span>
               ) : cd ? (
-                <span className="text-gold">{cd}</span>
+                <span className="text-turf">{cd}</span>
               ) : (
                 <span className="text-zinc-400">{whenLabel(m.start_time)}</span>
               )}

@@ -5248,6 +5248,7 @@ RATE_RULES = {
     "withdraw": (10, 600),    # withdrawal requests per user
     "topup": (12, 600),       # top-up orders per user
     "ticket": (6, 600),       # support tickets per user
+    "chat": (20, 300),        # contest chat messages per user
 }
 _rate_hits: dict = {}
 
@@ -5298,6 +5299,80 @@ def rate_limit(scope: str, key: str) -> None:
     (sending an SMS, creating an order)."""
     rate_limit_check(scope, key)
     rate_limit_hit(scope, key)
+
+
+# ---------- Contest chat ----------
+#
+# Entrants of the same contest talking about the same match. Only people who have
+# actually paid into the contest can post or read, so a contest id is not a public
+# message board, and the rate limit keeps trash talk from turning into spam.
+# Messages are capped and never edited: a screenshot of a taunt should still match
+# what the other player saw.
+
+CHAT_MAX_CHARS = 240
+CHAT_WINDOW = 60
+
+
+class ContestChatBody(BaseModel):
+    text: str = Field(min_length=1, max_length=CHAT_MAX_CHARS)
+
+
+async def contest_participant(contest_id: str, user: dict) -> bool:
+    if user.get("role") == "admin":
+        return True
+    hit = await db.entries.find_one({
+        "contest_id": contest_id,
+        "user_id": user["id"],
+        "status": {"$in": ["pending", "approved", "won", "refunded"]},
+    }, {"_id": 0, "id": 1})
+    return bool(hit)
+
+
+@api_router.get("/contests/{contest_id}/chat")
+async def contest_chat(contest_id: str, user=Depends(get_current_user)):
+    contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    if not await contest_participant(contest_id, user):
+        raise HTTPException(status_code=403, detail="Join this contest to read its chat")
+    rows = await db.contest_chat.find({"contest_id": contest_id}, {"_id": 0}).sort("at", -1).to_list(CHAT_WINDOW)
+    rows.reverse()
+    return {"contest_id": contest_id, "messages": rows, "can_post": contest.get("status") != "completed"}
+
+
+@api_router.post("/contests/{contest_id}/chat")
+async def contest_chat_send(contest_id: str, body: ContestChatBody, user=Depends(get_current_user)):
+    rate_limit("chat", user["id"])
+    contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
+    if not contest:
+        raise HTTPException(status_code=404, detail="Contest not found")
+    if contest.get("status") == "completed":
+        raise HTTPException(status_code=400, detail="This contest is settled — the chat is closed")
+    if not await contest_participant(contest_id, user):
+        raise HTTPException(status_code=403, detail="Join this contest to post in its chat")
+    text = re.sub(r"\s+", " ", body.text).strip()[:CHAT_MAX_CHARS]
+    if not text:
+        raise HTTPException(status_code=400, detail="Say something first")
+    msg = {
+        "id": str(uuid.uuid4()),
+        "contest_id": contest_id,
+        "user_id": user["id"],
+        "name": user.get("name") or "Player",
+        "text": text,
+        "at": now_iso(),
+    }
+    await db.contest_chat.insert_one(msg)
+    msg.pop("_id", None)
+    return {"ok": True, "message": msg}
+
+
+@api_router.delete("/contests/{contest_id}/chat/{message_id}")
+async def contest_chat_delete(contest_id: str, message_id: str, admin=Depends(require_admin)):
+    """Moderation: an organiser can pull one message without closing the room."""
+    res = await db.contest_chat.delete_one({"id": message_id, "contest_id": contest_id})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return {"ok": True}
 
 
 # --- Settlement tax (TDS-style columns on every prize). 0 = disabled until the

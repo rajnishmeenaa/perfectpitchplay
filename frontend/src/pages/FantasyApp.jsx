@@ -6,7 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { toast } from "sonner";
 import { isNative, notificationPermission, syncReminders } from "../lib/notifications";
 import { XiChip, XiBoard, XiAlerts } from "../components/xiNews";
-import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise, CaretUp, CaretDown, ChartLine, Star, Eye, WarningCircle, CheckCircle, ArrowsLeftRight } from "@phosphor-icons/react";
+import { PitchField, ChatThread } from "../components/turf";
+import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise, CaretUp, CaretDown, ChartLine, Star, Eye, WarningCircle, CheckCircle, ArrowsLeftRight, ChatsCircle } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
 const XI_OUT = ["rested", "injured", "dropped"];
@@ -175,7 +176,7 @@ function MatchCard({ match, active, onOpen }) {
     <button
       type="button"
       onClick={onOpen}
-      className={`text-left bg-white border rounded-lg p-5 transition-all hover:-translate-y-0.5 ${active ? "border-emerald-500 ring-2 ring-emerald-100" : "border-zinc-200 hover:border-emerald-300"}`}
+      className={`text-left bg-white border rounded-lg p-5 transition-all hover:-translate-y-0.5 ${active ? "border-turf ring-2 ring-emerald-100" : "border-zinc-200 hover:border-emerald-300"}`}
       data-testid={`match-card-${match.id}`}
     >
       <div className="flex items-center justify-between">
@@ -248,13 +249,13 @@ function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy, 
 
       <Tabs defaultValue="build" className="w-full">
         <TabsList className="bg-zinc-100 border border-zinc-200 rounded-full p-1 h-auto">
-          <TabsTrigger value="build" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-build">
+          <TabsTrigger value="build" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-build">
             <Plus size={15} weight="bold" className="mr-1.5" /> Build team
           </TabsTrigger>
-          <TabsTrigger value="teams" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-teams">
+          <TabsTrigger value="teams" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-teams">
             <Users size={15} weight="bold" className="mr-1.5" /> My teams ({my_teams.length})
           </TabsTrigger>
-          <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-contests">
+          <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="fsub-tab-contests">
             <Trophy size={15} weight="bold" className="mr-1.5" /> Contests ({contests.length})
           </TabsTrigger>
         </TabsList>
@@ -413,7 +414,7 @@ function LiveCentre({ match }) {
           <div className="flex gap-1.5 mt-4">
             {views.map(({ key, label, icon: Icon }) => (
               <button key={key} type="button" onClick={() => setView(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${view === key ? "bg-emerald-500 text-zinc-950" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${view === key ? "bg-turf text-zinc-950" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
                 data-testid={`live-view-${key}`}>
                 <Icon size={13} weight="bold" /> {label}
               </button>
@@ -619,6 +620,7 @@ function builderWarnings(t, ids, captain, vice, sides) {
 function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, onSaved }) {
   const { ids, captain, vice, name, editingId } = draft;
   const [roleFilter, setRoleFilter] = useState("ALL");
+  const [view, setView] = useState("pitch");
   const [busy, setBusy] = useState(false);
   const [infoId, setInfoId] = useState(null);
   const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
@@ -698,20 +700,45 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
       <div className="grid lg:grid-cols-3 gap-5">
       <div className="lg:col-span-2 bg-white border border-zinc-200 rounded-lg" data-testid="squad-picker">
         <div className="p-4 border-b border-zinc-100 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-widest text-zinc-500">Select players</span>
+          <div className="inline-flex rounded-full border border-ink-line bg-ink-soft p-0.5" data-testid="builder-view">
+            {[["pitch", "Pitch"], ["list", "List"]].map(([key, label]) => (
+              <button key={key} type="button" onClick={() => setView(key)}
+                data-testid={`view-${key}`}
+                className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${
+                  view === key ? "bg-turf text-white" : "text-zinc-400 hover:text-zinc-200"
+                }`}>
+                {label}
+              </button>
+            ))}
+          </div>
           <button type="button" onClick={autoPick} disabled={locked || busy}
             className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-violet-700 bg-violet-50 border border-violet-200 rounded-full px-3 py-1 hover:bg-violet-100 disabled:opacity-40"
             data-testid="auto-pick-btn">
             <Sparkle size={13} weight="fill" /> Auto-pick XI
           </button>
+          {view === "list" && (
           <div className="flex gap-1 ml-auto">
             {["ALL", ...ROLES].map((r) => (
               <button key={r} type="button" onClick={() => setRoleFilter(r)}
-                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${roleFilter === r ? "bg-emerald-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
+                className={`px-2.5 py-1 rounded-full text-[11px] font-bold transition-colors ${roleFilter === r ? "bg-turf text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
                 data-testid={`role-filter-${r}`}>{r}</button>
             ))}
           </div>
+          )}
         </div>
+        {view === "pitch" ? (
+          <PitchField
+            players={players}
+            pickedIds={ids}
+            captain={captain}
+            vice={vice}
+            onToggle={toggle}
+            budget={CREDIT_BUDGET}
+            perSide={t.sides}
+            locked={locked}
+            outIds={players.filter((p) => isOutOfXi(p)).map((p) => p.id)}
+          />
+        ) : (
         <div className="divide-y divide-zinc-100 max-h-[520px] overflow-y-auto">
           {sides.map((side) => (
             <div key={side}>
@@ -725,6 +752,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
             </div>
           ))}
         </div>
+        )}
       </div>
 
       <div className="space-y-4">
@@ -748,7 +776,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
               <span className="tabular" data-testid="credits-readout">{t.credits} / {CREDIT_BUDGET}</span>
             </div>
             <div className="h-2 rounded-full bg-zinc-100 overflow-hidden">
-              <div className={`h-full rounded-full transition-all ${t.credits > CREDIT_BUDGET ? "bg-red-500" : t.credits > 95 ? "bg-amber-500" : "bg-emerald-600"}`}
+              <div className={`h-full rounded-full transition-all ${t.credits > CREDIT_BUDGET ? "bg-red-500" : t.credits > 95 ? "bg-amber-500" : "bg-neon"}`}
                 style={{ width: `${Math.min(100, (t.credits / CREDIT_BUDGET) * 100)}%` }} data-testid="credits-bar" />
             </div>
             <div className="flex items-center justify-between text-[10px] text-zinc-500 mt-1 tabular">
@@ -777,7 +805,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
             onChange={(e) => set({ name: e.target.value })}
             maxLength={30}
             placeholder="Team name (optional)"
-            className="mt-4 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="mt-4 w-full rounded-md border border-zinc-200 bg-transparent px-3 py-2 text-sm text-zinc-800 focus:outline-none focus:ring-2 focus:ring-turf"
             data-testid="team-name-input"
           />
 
@@ -803,7 +831,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
             </div>
           )}
 
-          <Button disabled={!ready || busy} onClick={save} className="mt-5 w-full rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95" data-testid="save-team-btn">
+          <Button disabled={!ready || busy} onClick={save} className="mt-5 w-full rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95" data-testid="save-team-btn">
             {locked ? <><Lock size={16} weight="bold" className="mr-1" /> Teams locked</> : busy ? "Saving…" : <><Check size={16} weight="bold" className="mr-1" /> {editingId ? "Update team" : "Save team"}</>}
           </Button>
           {!ready && !locked && ids.length > 0 && warnings.length === 0 && (
@@ -871,7 +899,7 @@ function PlayerRow({ player, picked, disabled, onToggle, onInfo }) {
         className="flex-1 flex items-center gap-3 text-left disabled:opacity-50"
         data-testid={`player-row-${player.id}`}
       >
-        <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${picked ? "bg-emerald-600 border-emerald-600 text-white" : "border-zinc-300 text-transparent"}`}>
+        <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${picked ? "bg-turf border-turf text-white" : "border-zinc-300 text-transparent"}`}>
           <Check size={12} weight="bold" />
         </span>
         <span className="min-w-0 flex-1">
@@ -973,7 +1001,7 @@ function PlayerSheet({ playerId, onClose }) {
           </>
         )}
         <div className="flex justify-end mt-4">
-          <Button onClick={onClose} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold">Done</Button>
+          <Button onClick={onClose} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold">Done</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -1165,7 +1193,7 @@ function CompareDialog({ pair, teams, onClose }) {
           </>
         )}
         <div className="flex justify-end mt-4">
-          <Button onClick={onClose} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold">Close</Button>
+          <Button onClick={onClose} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold">Close</Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -1220,7 +1248,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
             <select
               value={multiTeamId}
               onChange={(e) => setMultiTeam(e.target.value)}
-              className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-turf"
               data-testid="multi-team-select"
             >
               {myTeams.map((tm) => <option key={tm.id} value={tm.id}>{tm.name} · {tm.credits_used} cr</option>)}
@@ -1231,14 +1259,14 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
               return (
                 <button key={c.id} type="button" disabled={already}
                   onClick={() => setMultiSel(on ? multiSel.filter((x) => x !== c.id) : [...multiSel, c.id])}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-40 ${on ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-40 ${on ? "bg-turf text-white border-turf" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
                   data-testid={`multi-pick-${c.id}`}>
                   {already ? `${c.title} · in` : `${c.title} · ${money(c.entry_fee)}`}
                 </button>
               );
             })}
             <Button size="sm" disabled={!multiTeamId || !multiSel.length || busyMulti || multiCost > walletBalance} onClick={joinMany}
-              className="ml-auto rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold active:scale-95" data-testid="multi-join-btn">
+              className="ml-auto rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold active:scale-95" data-testid="multi-join-btn">
               {busyMulti ? "Joining…" : `Join ${multiSel.length} · ${money(multiCost)}`}
             </Button>
           </div>
@@ -1289,7 +1317,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
                     const used = joined.includes(tm.id);
                     return (
                       <button key={tm.id} type="button" disabled={used || closed} onClick={() => setPicked({ ...picked, [c.id]: tm.id })}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-45 ${chosen === tm.id && !used ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-45 ${chosen === tm.id && !used ? "bg-turf text-white border-turf" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
                         data-testid={`choose-team-${c.id}-${tm.id}`}>
                         {used ? `${tm.name} · joined` : `${tm.name} · ${tm.credits_used} cr`}
                       </button>
@@ -1472,12 +1500,58 @@ function LeaderboardDialog({ contest, onClose }) {
             )}
           </>
         )}
+        <ContestChat contest={contest} joined={rows.some((r) => r.is_me) || settled} />
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={load} className="rounded-full font-bold" data-testid="lb-refresh"><Clock size={14} className="mr-1" /> Refresh</Button>
-          <Button onClick={onClose} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold">Close</Button>
+          <Button onClick={onClose} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold">Close</Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ContestChat({ contest, joined }) {
+  const [messages, setMessages] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [visible, setVisible] = useState(false);
+
+  const load = () => api.get(`/contests/${contest.id}/chat`).then((r) => setMessages(r.data.messages || [])).catch(() => {});
+  useEffect(() => { if (visible) load(); /* eslint-disable-next-line */ }, [visible, contest.id]);
+
+  if (!joined) return null;
+
+  if (!visible) {
+    return (
+      <div className="mt-4 flex items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3" data-testid="chat-teaser">
+        <ChatsCircle size={18} weight="fill" className="text-turf shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-bold text-zinc-800">Contest chat</div>
+          <div className="text-[11px] text-zinc-500 truncate">Talk to the {messages.length || contest.live_entries || 0} others in this contest.</div>
+        </div>
+        <button type="button" onClick={() => setVisible(true)} data-testid="chat-open"
+          className="shrink-0 rounded-full border border-turf/40 bg-turf/10 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-widest text-turf hover:bg-turf/20">
+          Open
+        </button>
+      </div>
+    );
+  }
+
+  const send = async (text) => {
+    setBusy(true);
+    try {
+      const { data } = await api.post(`/contests/${contest.id}/chat`, { text });
+      setMessages((cur) => [...cur, data.message]);
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not send that");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <ChatThread messages={messages} onSend={send} busy={busy} />
+    </div>
   );
 }
 
@@ -1523,7 +1597,7 @@ function RulesDialog({ open, onClose }) {
           </div>
         )}
         <div className="flex justify-end mt-2">
-          <Button onClick={onClose} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="rules-close">Got it</Button>
+          <Button onClick={onClose} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="rules-close">Got it</Button>
         </div>
       </DialogContent>
     </Dialog>

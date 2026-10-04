@@ -1,5 +1,23 @@
+/** @tailwind config for the Turf design system.
+ *
+ * Turf is the app's atomic design layer: every colour a component uses is declared
+ * here once, so the same token renders identically in the web build, the Capacitor
+ * Android shell and (later) an iOS shell. Never hard-code a hex value in a screen —
+ * add or reuse a token instead.
+ *
+ *   turf-*   brand: primary actions, active tabs, entry highlights
+ *   ink-*    charcoal surfaces the brand colour sits on
+ *   neon-*   live / positive / leading states
+ *   trophy-* prize money and winner moments only
+ */
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  /**
+   * TURF DESIGN TOKENS
+   * Brand: #ED1B24 (turf) on charcoal (ink) with neon-green live accents and
+   * trophy gold reserved for prize money. Screens consume these tokens through
+   * src/components/turf rather than raw hex values.
+   */
     // `overline` is a Tailwind utility; without this an app's own eyebrow-label class draws a line above the text.
     blocklist: ["overline"],
     darkMode: ["class"],
@@ -12,40 +30,64 @@ module.exports = {
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)'
+        sm: 'calc(var(--radius) - 4px)',
+        turf: '0.875rem',
+        'turf-pill': '999px'
       },
       colors: {
-        // Stadium Gold brand palette
-        gold: {
+        // ---- Turf brand red (#ED1B24): primary actions, active tabs, entry highlights
+        turf: {
+          DEFAULT: '#ED1B24',
+          red: '#ED1B24',
+          'red-dark': '#C6121A',
+          'red-deep': '#8E0C12',
+          'red-soft': 'rgba(237,27,36,0.14)',
+          'red-line': 'rgba(237,27,36,0.38)',
+          fire: '#FF4B52',
+          ember: '#FF8A8F'
+        },
+        // ---- Charcoal / black surfaces
+        ink: {
+          DEFAULT: '#0A0C11',
+          soft: '#0E1117',
+          card: '#12151C',
+          line: '#272E3A',
+          950: '#05060A',
+          900: '#0A0C11',
+          850: '#12151C',
+          800: '#171B23',
+          700: '#232A35',
+          600: '#3A4352',
+          500: '#677282'
+        },
+        // ---- Neon turf green: live matches, positive deltas, in-XI confirmations
+        neon: {
+          DEFAULT: '#2BF57C',
+          bright: '#6BFFA8',
+          deep: '#0B7A43',
+          soft: 'rgba(43,245,124,0.14)'
+        },
+        // ---- Trophy gold stays reserved for prize money and winner moments
+        trophy: {
           DEFAULT: '#F2B632',
           light: '#FFD35C',
           dark: '#B97F14',
-          soft: '#F2B63226'
+          soft: 'rgba(242,182,50,0.14)'
         },
-        night: {
-          DEFAULT: '#071109',
-          soft: '#0A1810',
-          card: '#10261B',
-          line: '#1B352A'
-        },
-        pitch: {
-          DEFAULT: '#1FA968',
-          deep: '#0E5A38',
-          bright: '#35D085'
-        },
-        // Remapped to the dark stadium scale so existing zinc-* classes render on the night theme.
+        // Remapped to the charcoal scale so the ~1,000 existing zinc-* classes in the
+        // app render dark-on-charcoal without touching every screen.
         zinc: {
-          50: '#0C1A13',
-          100: '#0F2119',
-          200: '#1B352A',
-          300: '#2A4D3D',
-          400: '#567D68',
-          500: '#7CA28D',
-          600: '#A3C2AF',
-          700: '#C4DACC',
-          800: '#DEEDE4',
-          900: '#F0F7F2',
-          950: '#FAFDFB'
+          50: '#101319',
+          100: '#14181F',
+          200: '#232A35',
+          300: '#3A4352',
+          400: '#677282',
+          500: '#93A0B0',
+          600: '#BCC7D4',
+          700: '#D9E1EA',
+          800: '#EBF0F5',
+          900: '#F6F9FC',
+          950: '#FDFEFF'
         },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
@@ -89,13 +131,24 @@ module.exports = {
         }
       },
       fontFamily: {
-        heading: ['Outfit', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        body: ['Manrope', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        heading: ['Barlow Condensed', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        body: ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        display: ['Barlow Condensed', 'Impact', 'ui-sans-serif', 'sans-serif'],
+        num: ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif']
+      },
+      fontSize: {
+        '2xs': ['0.6875rem', { lineHeight: '0.875rem', letterSpacing: '0.04em' }]
       },
       boxShadow: {
-        'glow-gold': '0 0 24px -6px rgba(242,182,50,0.45)',
-        'glow-pitch': '0 0 24px -6px rgba(31,169,104,0.5)',
-        card: '0 1px 0 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.55)'
+        'glow-turf': '0 0 26px -6px rgba(237,27,36,0.55)',
+        'glow-neon': '0 0 26px -6px rgba(43,245,124,0.55)',
+        'glow-trophy': '0 0 26px -6px rgba(242,182,50,0.5)',
+        card: '0 1px 0 0 rgba(255,255,255,0.05) inset, 0 10px 28px -14px rgba(0,0,0,0.7)',
+        lift: '0 14px 34px -18px rgba(237,27,36,0.65)'
+      },
+      backgroundImage: {
+        'turf-field': 'repeating-linear-gradient(180deg, rgba(43,245,124,0.055) 0 28px, rgba(43,245,124,0.015) 28px 56px)',
+        'turf-stripe': 'repeating-linear-gradient(115deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 14px)'
       },
       keyframes: {
         'accordion-down': {
@@ -130,6 +183,16 @@ module.exports = {
           '0%': { transform: 'scale(0.6)', opacity: '0' },
           '70%': { transform: 'scale(1.06)' },
           '100%': { transform: 'scale(1)', opacity: '1' }
+        },
+        // Live-match pulse behind the red LIVE dot.
+        blip: {
+          '0%, 100%': { opacity: '1', transform: 'scale(1)' },
+          '50%': { opacity: '0.35', transform: 'scale(1.45)' }
+        },
+        // Prize pool / rank-change emphasis.
+        flash: {
+          '0%': { backgroundColor: 'rgba(237,27,36,0.30)' },
+          '100%': { backgroundColor: 'transparent' }
         }
       },
       animation: {
@@ -138,7 +201,9 @@ module.exports = {
         floaty: 'floaty 5s ease-in-out infinite',
         shimmer: 'shimmer 2.4s linear infinite',
         ticker: 'ticker 22s linear infinite',
-        pop: 'pop 0.35s cubic-bezier(0.22,1,0.36,1) both'
+        pop: 'pop 0.35s cubic-bezier(0.22,1,0.36,1) both',
+        blip: 'blip 1.1s ease-in-out infinite',
+        flash: 'flash 1.2s ease-out 1'
       }
     }
   },

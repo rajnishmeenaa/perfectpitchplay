@@ -49,7 +49,7 @@ export default function AdminFantasy() {
           </h2>
           <p className="text-sm text-zinc-500 mt-1">Announce a match, add both squads, open fantasy contests, then post the scorecard — points, ranks and prizes are calculated automatically.</p>
         </div>
-        <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold active:scale-95" data-testid="new-match-btn">
+        <Button onClick={() => { setEditing(null); setFormOpen(true); }} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95" data-testid="new-match-btn">
           <Plus size={18} weight="bold" className="mr-1" /> New match
         </Button>
       </div>
@@ -161,7 +161,7 @@ function MatchFormDialog({ open, onClose, onSaved, initial }) {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="match-form-cancel">Cancel</Button>
-          <Button disabled={busy} onClick={submit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="match-form-save">
+          <Button disabled={busy} onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="match-form-save">
             {busy ? "Saving…" : initial ? "Save changes" : "Create match"}
           </Button>
         </DialogFooter>
@@ -218,19 +218,19 @@ function MatchAdmin({ match, onMatchChanged }) {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="bg-zinc-100 border border-zinc-200 rounded-full p-1 h-auto">
-          <TabsTrigger value="squad" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-squad">
+          <TabsTrigger value="squad" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-squad">
             <Users size={15} weight="bold" className="mr-1.5" /> Squads
           </TabsTrigger>
-          <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-contests">
+          <TabsTrigger value="contests" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-contests">
             <Trophy size={15} weight="bold" className="mr-1.5" /> Contests
           </TabsTrigger>
-          <TabsTrigger value="xi" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-xi">
+          <TabsTrigger value="xi" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-xi">
             <ListChecks size={15} weight="bold" className="mr-1.5" /> Playing XI
           </TabsTrigger>
-          <TabsTrigger value="scorecard" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-scorecard">
+          <TabsTrigger value="scorecard" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-scorecard">
             <ChartBar size={15} weight="bold" className="mr-1.5" /> Scorecard & results
           </TabsTrigger>
-          <TabsTrigger value="live" className="rounded-full data-[state=active]:bg-emerald-600 data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-live">
+          <TabsTrigger value="live" className="rounded-full data-[state=active]:bg-turf data-[state=active]:text-white px-4 py-1.5 text-sm font-bold" data-testid="atab-live">
             <Broadcast size={15} weight="bold" className="mr-1.5" /> Live centre
           </TabsTrigger>
         </TabsList>
@@ -361,12 +361,12 @@ function LiveCenterPanel({ match, onMatchChanged }) {
       </div>
 
       {(live.innings || []).length > 0 && (
-        <div className="bg-night text-white rounded-lg p-5 border border-night-line" data-testid="admin-live-preview">
+        <div className="bg-ink text-white rounded-lg p-5 border border-ink-line" data-testid="admin-live-preview">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">What users see{live.auto_live ? " · auto-refresh on" : ""}</div>
           <div className="text-sm font-bold mt-1" data-testid="admin-live-status">{live.status_text || "no status line"}</div>
           <div className="flex flex-wrap gap-2 mt-3">
             {live.innings.map((r, i) => (
-              <div key={`${r.innings}-${i}`} className="bg-night-card rounded-md px-3 py-2 border border-night-line">
+              <div key={`${r.innings}-${i}`} className="bg-ink-card rounded-md px-3 py-2 border border-ink-line">
                 <div className="text-[10px] uppercase tracking-widest text-zinc-400">{r.innings || `Innings ${i + 1}`}</div>
                 <div className="text-lg font-extrabold tabular">{r.runs}/{r.wickets}</div>
                 {r.overs ? <div className="text-[11px] text-zinc-400 tabular">{r.overs} ov</div> : null}
@@ -531,7 +531,7 @@ function SquadPanel({ match }) {
           <Input type="number" step="1" min="0" max="500" value={row.projection} onChange={(e) => setRow({ ...row, projection: e.target.value })} placeholder="proj" data-testid="player-projection-input" />
         </div>
         <div className="flex flex-wrap gap-2 items-center mt-3">
-          <Button size="sm" disabled={busy} onClick={add} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="add-player-btn">
+          <Button size="sm" disabled={busy} onClick={add} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="add-player-btn">
             <Plus size={15} weight="bold" className="mr-1" /> Add player
           </Button>
           <span className="text-[11px] text-zinc-500 flex items-center gap-1" data-testid="projection-hint">
@@ -685,7 +685,7 @@ function FantasyContestPanel({ match }) {
             <Plus size={14} weight="bold" className="mr-1" /> Add rank
           </Button>
         </div>
-        <Button disabled={busy} onClick={create} className="w-full rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="create-fc-btn">
+        <Button disabled={busy} onClick={create} className="w-full rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="create-fc-btn">
           <Trophy size={16} weight="fill" className="mr-1" /> {busy ? "Creating…" : "Publish fantasy contest"}
         </Button>
       </div>
@@ -766,7 +766,7 @@ function SettleButton({ contest, match, onDone }) {
           {preview && (
             <div className="border border-zinc-200 rounded-lg overflow-hidden">
               {Number(preview.leaderboard?.[0]?.tax_percent || 0) > 0 && (
-                <div className="px-4 py-2 bg-gold/10 border-b border-gold/20 text-[11px] font-bold uppercase tracking-widest text-gold" data-testid="settle-tax-note">
+                <div className="px-4 py-2 bg-turf/10 border-b border-turf/20 text-[11px] font-bold uppercase tracking-widest text-turf" data-testid="settle-tax-note">
                   {preview.leaderboard[0].tax_percent}% tax withheld on every prize
                 </div>
               )}
@@ -789,7 +789,7 @@ function SettleButton({ contest, match, onDone }) {
                       <TableCell className="truncate max-w-[140px]">{r.user_name}</TableCell>
                       <TableCell className="truncate max-w-[140px] text-zinc-500">{r.team_name}</TableCell>
                       <TableCell className="text-right font-extrabold tabular">{r.points}</TableCell>
-                      <TableCell className="text-right font-bold text-gold tabular">{r.prize ? money(r.prize) : "—"}</TableCell>
+                      <TableCell className="text-right font-bold text-turf tabular">{r.prize ? money(r.prize) : "—"}</TableCell>
                       {Number(r.tax_percent || 0) > 0 && (
                         <TableCell className="text-right text-xs font-bold text-red-400 tabular" data-testid={`settle-tax-${r.rank}`}>
                           {r.tax_amount ? `−${money(r.tax_amount)}` : "—"}
@@ -806,7 +806,7 @@ function SettleButton({ contest, match, onDone }) {
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)} data-testid="settle-cancel">Cancel</Button>
-            <Button disabled={busy} onClick={commit} className="bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="settle-confirm">
+            <Button disabled={busy} onClick={commit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="settle-confirm">
               <Check size={16} weight="bold" className="mr-1" /> {busy ? "Working…" : "Credit prizes & finish"}
             </Button>
           </DialogFooter>
@@ -910,7 +910,7 @@ function ScorecardPanel({ match, onMatchChanged }) {
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => upd(r.player_id, "played", !r.played)} title="Played?"
-                      className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${r.played ? "bg-emerald-600 text-white" : "bg-zinc-200 text-zinc-400"}`} data-testid={`played-${r.player_id}`}>
+                      className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${r.played ? "bg-turf text-white" : "bg-zinc-200 text-zinc-400"}`} data-testid={`played-${r.player_id}`}>
                       <Check size={12} weight="bold" />
                     </button>
                     <div className="min-w-0">
@@ -928,7 +928,7 @@ function ScorecardPanel({ match, onMatchChanged }) {
                       </button>
                     ) : (
                       <input type="number" min="0" value={r[k]} onChange={(e) => upd(r.player_id, k, e.target.value)} step={k === "overs" ? "0.1" : "1"}
-                        style={{ width: w }} className="h-7 rounded border border-zinc-200 bg-transparent px-1 text-xs text-center tabular text-zinc-800 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        style={{ width: w }} className="h-7 rounded border border-zinc-200 bg-transparent px-1 text-xs text-center tabular text-zinc-800 focus:outline-none focus:ring-1 focus:ring-turf"
                         data-testid={`cell-${k}-${r.player_id}`} />
                     )}
                   </TableCell>
@@ -1040,7 +1040,7 @@ function LiveScoreImport({ match, onFill }) {
               <div className="text-sm text-amber-900">Add a free <b>CricAPI / CricketData.org</b> key to pull player stats automatically. Manual entry always works without it.</div>
               <div className="flex flex-wrap gap-2">
                 <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="paste api key" type="password" className="max-w-xs tabular" data-testid="scores-key-input" />
-                <Button size="sm" disabled={busy} onClick={saveKey} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="scores-key-save">{busy ? "Saving…" : "Save key"}</Button>
+                <Button size="sm" disabled={busy} onClick={saveKey} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="scores-key-save">{busy ? "Saving…" : "Save key"}</Button>
               </div>
               <div className="text-[11px] text-amber-800">Prefer a server variable? Set CRICAPI_KEY on the backend and it is used automatically.</div>
             </div>
@@ -1058,7 +1058,7 @@ function LiveScoreImport({ match, onFill }) {
                     <option value="fantasy">Fantasy feed</option>
                   </select>
                 </div>
-                <Button size="sm" disabled={busy} onClick={runImport} className="rounded-full bg-emerald-600 hover:bg-emerald-700 font-bold" data-testid="scores-import-btn">
+                <Button size="sm" disabled={busy} onClick={runImport} className="rounded-full bg-turf hover:bg-turf-red-dark font-bold" data-testid="scores-import-btn">
                   <ChartBar size={15} weight="bold" className="mr-1" /> {busy ? "Working…" : "Import & preview"}
                 </Button>
                 <Button size="sm" variant="outline" disabled={busy} onClick={fetchLive} className="rounded-full font-bold" data-testid="scores-live-btn">
