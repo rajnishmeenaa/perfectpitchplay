@@ -278,7 +278,7 @@ export default function Landing() {
       <footer className="border-t border-zinc-200 bg-white/90">
         <div className="max-w-7xl mx-auto px-6 py-6 flex justify-between text-sm text-zinc-500">
           <span>© PitchPlay — Play responsibly. 18+ only.</span>
-          <span className="font-mono">v1.4.0</span>
+          <span className="font-mono">v1.5.0</span>
         </div>
       </footer>
     </div>

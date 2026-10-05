@@ -3983,8 +3983,8 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 5, "version_name": "1.4.0", "apk_url": "",
-                        "notes": "Stadium Gold redesign, invite rewards, badge cabinet and season ladder",
+APP_VERSION_DEFAULTS = {"version_code": 6, "version_name": "1.5.0", "apk_url": "",
+                        "notes": "Turf redesign: brand-red interface, playing XI centre, contest chat",
                         "force_update": False}
 
 
