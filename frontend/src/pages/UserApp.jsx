@@ -778,6 +778,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
   const [walletPaying, setWalletPaying] = useState(false);
 
   const manualOn = config.manual_upi_enabled !== false;
+  const canTopUp = !!config.manual_upi_enabled && !!config.admin_upi_id;
 
   if (!contest) return null;
   if (contest.kind === "fantasy" && !team) {
