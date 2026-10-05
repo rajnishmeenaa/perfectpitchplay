@@ -1342,9 +1342,9 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
                 )}
               </div>
             </div>
-            {walletBalance < Number(c.entry_fee || 0) && !closed && config.razorpay_enabled && (
+            {walletBalance < Number(c.entry_fee || 0) && !closed && config.manual_upi_enabled && (
               <p className="text-[11px] text-amber-700 mt-2" data-testid={`wallet-short-${c.id}`}>
-                Wallet has {money(walletBalance)} — pay online, or add money from the Wallet tab.
+                Wallet has {money(walletBalance)} — add money from the Wallet tab.
               </p>
             )}
           </div>

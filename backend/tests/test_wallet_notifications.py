@@ -1,4 +1,4 @@
-"""Tests for the new features: in-app notifications, wallet top-up (Razorpay),
+"""Tests for the new features: in-app notifications, manual UPI wallet top-ups,
 and paying a contest entry fee directly from the wallet balance.
 
 Like the other suites in this folder, these are INTEGRATION tests: they make real
@@ -11,9 +11,9 @@ If REACT_APP_BACKEND_URL is unset, the shared Emergent preview default is used
 (same as the other test modules) — that preview must be re-deployed with the new
 endpoints before these will pass.
 
-Razorpay note: real top-up *completion* needs live gateway keys and a real
-payment, so here we cover what is testable without a gateway — auth, request
-validation, and the configured/not-configured contract of the order endpoint.
+Top-up note: real top-up *completion* needs the organiser to verify the UTR
+against their bank statement, so here we cover what is testable without a
+human in the loop — auth and request validation.
 """
 import os
 import uuid
@@ -156,37 +156,6 @@ class TestWalletEntryPayment:
             assert r.status_code == 400
         finally:
             _delete_contest(admin_headers, cid)
-
-
-# ---------- Wallet top-up (Razorpay) ----------
-class TestWalletTopUp:
-    def test_order_requires_auth(self):
-        r = requests.post(f"{API}/wallet/topup/order", json={"amount": 100}, timeout=30)
-        assert r.status_code == 401
-
-    @pytest.mark.parametrize("bad", [0, -5, 100001])
-    def test_order_amount_validation_422(self, user_ctx, bad):
-        # Pydantic Field(gt=0, le=100000) rejects these before any gateway call.
-        r = requests.post(f"{API}/wallet/topup/order", json={"amount": bad},
-                          headers=user_ctx["headers"], timeout=30)
-        assert r.status_code == 422, r.text
-
-    def test_order_contract(self, user_ctx):
-        # 200 when Razorpay is configured; 503 when it isn't. Both are valid here.
-        r = requests.post(f"{API}/wallet/topup/order", json={"amount": 100},
-                          headers=user_ctx["headers"], timeout=30)
-        assert r.status_code in (200, 503), r.text
-        if r.status_code == 200:
-            d = r.json()
-            assert d["order_id"]
-            assert d["amount"] == 10000  # paise
-            assert d["currency"] == "INR"
-            assert d["key_id"]
-
-    def test_verify_requires_auth(self):
-        r = requests.post(f"{API}/wallet/topup/verify", json={
-            "razorpay_order_id": "x", "razorpay_payment_id": "y", "razorpay_signature": "z"}, timeout=30)
-        assert r.status_code == 401
 
 
 # ---------- In-app notifications ----------

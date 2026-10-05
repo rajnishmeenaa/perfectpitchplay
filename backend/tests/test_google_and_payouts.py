@@ -1,4 +1,4 @@
-"""Backend tests for Google auth + set-mobile + RazorpayX payouts config gating (iteration 7)."""
+"""Backend tests for Google auth + set-mobile + admin payment settings (manual UPI)."""
 import os
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -130,7 +130,7 @@ def test_set_mobile_success(google_user, db):
     assert got["mobile"] == fresh_mobile
 
 
-# ---------- Admin payment-settings + payouts config ----------
+# ---------- Admin payment-settings (manual UPI only) ----------
 
 def _get_settings(admin_token):
     r = requests.get(f"{API}/admin/payment-settings", headers={"Authorization": f"Bearer {admin_token}"})
@@ -150,66 +150,25 @@ def _put_settings(admin_token, payload):
 
 def test_payment_settings_shape(admin_token):
     s = _get_settings(admin_token)
-    for k in ("razorpayx_account_number", "razorpay_connected", "razorpayx_enabled"):
+    for k in ("upi_id", "payee_name", "instructions", "manual_upi_enabled"):
         assert k in s, f"missing {k}: {s}"
 
 
-def test_payouts_enable_disable_flow(admin_token):
+def test_payment_settings_toggle_manual_upi(admin_token):
     # Snapshot current settings first
     original = _get_settings(admin_token)
     base = {
         "upi_id": original.get("upi_id") or "admin@upi",
         "payee_name": original.get("payee_name") or "Admin",
         "instructions": original.get("instructions") or "",
-        "manual_upi_enabled": bool(original.get("manual_upi_enabled", True)),
     }
     try:
-        _put_settings(admin_token, {**base, "razorpayx_account_number": "7878780000000001"})
+        _put_settings(admin_token, {**base, "manual_upi_enabled": False})
         s = _get_settings(admin_token)
-        assert s["razorpayx_enabled"] is True
-        r = requests.get(f"{API}/payments/config", headers={"Authorization": f"Bearer {admin_token}"})
-        assert r.status_code == 200
-        cfg = r.json()
-        assert cfg.get("payouts_enabled") is True
-        assert cfg.get("razorpay_enabled") is True  # regression
+        assert s["manual_upi_enabled"] is False
 
-        _put_settings(admin_token, {**base, "razorpayx_account_number": ""})
+        _put_settings(admin_token, {**base, "manual_upi_enabled": True})
         s = _get_settings(admin_token)
-        assert s["razorpayx_enabled"] is False
-        r = requests.get(f"{API}/payments/config", headers={"Authorization": f"Bearer {admin_token}"})
-        assert r.json().get("payouts_enabled") is False
+        assert s["manual_upi_enabled"] is True
     finally:
-        _put_settings(admin_token, {**base, "razorpayx_account_number": ""})
-
-
-def test_payout_gate_503_when_unconfigured(admin_token, db):
-    # Snapshot & clear settings
-    original = _get_settings(admin_token)
-    base = {
-        "upi_id": original.get("upi_id") or "admin@upi",
-        "payee_name": original.get("payee_name") or "Admin",
-        "instructions": original.get("instructions") or "",
-        "manual_upi_enabled": bool(original.get("manual_upi_enabled", True)),
-    }
-    _put_settings(admin_token, {**base, "razorpayx_account_number": ""})
-
-    # Create a pending withdrawal directly in DB for gating test
-    user = db.users.find_one({"mobile": USER_MOBILE})
-    assert user is not None
-    wid = str(uuid.uuid4())
-    db.withdrawals.insert_one({
-        "id": wid, "user_id": user["id"], "amount": 100.0,
-        "status": "pending", "upi_id": "test@upi",
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
-    try:
-        r = requests.post(
-            f"{API}/withdrawals/{wid}/payout",
-            headers={"Authorization": f"Bearer {admin_token}"},
-        )
-        # Expected 503 when payouts not configured
-        assert r.status_code == 503, f"expected 503, got {r.status_code}: {r.text}"
-        detail = (r.json().get("detail") or "").lower()
-        assert "razorpayx" in detail or "account number" in detail
-    finally:
-        db.withdrawals.delete_one({"id": wid})
+        _put_settings(admin_token, {**base, "manual_upi_enabled": True})

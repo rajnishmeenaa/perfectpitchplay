@@ -8,7 +8,7 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Lightning, Flag, ShieldCheck, Scroll, FirstAid } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Flag, ShieldCheck, Scroll, FirstAid } from "@phosphor-icons/react";
 import { Switch } from "../components/ui/switch";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
@@ -117,8 +117,6 @@ function StatsPanel() {
     { label: "Total contests", value: stats?.total_contests ?? "—", color: "orange", icon: Ticket },
     { label: "Pending payments", value: stats?.pending_entries ?? "—", color: "yellow", icon: Receipt },
     { label: "Pending withdrawals", value: stats?.pending_withdrawals ?? "—", color: "red", icon: CurrencyInr },
-    { label: "Razorpay collected", value: stats ? money(stats.online_collected) : "—", color: "emerald", icon: Lightning },
-    { label: "Online payments", value: stats?.online_payments_count ?? "—", color: "emerald", icon: Check },
     { label: "Fantasy matches", value: stats?.total_matches ?? "—", color: "emerald", icon: Flag },
     { label: "Teams built", value: stats?.fantasy_teams ?? "—", color: "emerald", icon: Users },
     { label: "Contests to settle", value: stats?.fantasy_contests_unsettled ?? "—", color: "orange", icon: Trophy },
@@ -380,7 +378,7 @@ function EntriesPanel() {
   return (
     <div>
       <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Payment approvals</h1>
-      <p className="text-zinc-500 mt-1">Razorpay payments are auto-approved instantly. Review manual UPI screenshots, approve to unlock the play link, declare winners.</p>
+      <p className="text-zinc-500 mt-1">Review manual UPI payment screenshots, approve to unlock the play link, declare winners.</p>
       <SearchBox value={q} onChange={setQ} placeholder="Search mobile, name, contest, UTR / payment ID..." testId="entries-search" />
 
       <div className="bg-white border border-zinc-200 rounded-lg mt-4 overflow-hidden">
@@ -406,11 +404,7 @@ function EntriesPanel() {
                 <TableCell><div className="font-semibold text-zinc-800">{e.contest_title}</div></TableCell>
                 <TableCell className="tabular">
                   <div className="font-bold">{money(e.entry_fee)}</div>
-                  {e.payment_method === "razorpay" ? (
-                    <div className="text-xs text-emerald-700 font-semibold" data-testid={`admin-paid-online-${e.id}`}>Razorpay · {e.razorpay_payment_id}</div>
-                  ) : (
-                    <div className="text-xs text-zinc-500">UTR: {e.utr || "—"}</div>
-                  )}
+                  <div className="text-xs text-zinc-500">{e.payment_method === "wallet" ? "Paid from wallet" : <>UTR: {e.utr || "—"}</>}</div>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={e.status} />
@@ -567,10 +561,8 @@ export function ScreenshotViewer({ path, testId = "screenshot-img", className = 
 
 function WithdrawalsPanel() {
   const [items, setItems] = useState([]);
-  const [payoutsOn, setPayoutsOn] = useState(false);
-  const [busyId, setBusyId] = useState(null);
   const load = () => api.get("/withdrawals").then(r => setItems(r.data));
-  useEffect(() => { load(); api.get("/payments/config").then(r => setPayoutsOn(!!r.data.payouts_enabled)); }, []);
+  useEffect(() => { load(); }, []);
   const decide = async (w, action) => {
     try {
       await api.post(`/withdrawals/${w.id}/decision`, { action });
@@ -578,28 +570,10 @@ function WithdrawalsPanel() {
       load();
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
   };
-  const payout = async (w) => {
-    setBusyId(w.id);
-    try {
-      const r = await api.post(`/withdrawals/${w.id}/payout`);
-      toast.success(r.data.status === "paid" ? `Paid ${money(w.amount)} to ${w.upi_id}` : `Payout ${r.data.payout_status} — will auto-update`);
-      load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Payout failed"); } finally { setBusyId(null); }
-  };
-  const sync = async (w) => {
-    setBusyId(w.id);
-    try { const r = await api.post(`/withdrawals/${w.id}/payout/sync`); toast.success(`Payout status: ${r.data.payout_status}`); load(); }
-    catch (e) { toast.error(e?.response?.data?.detail || "Sync failed"); } finally { setBusyId(null); }
-  };
   return (
     <div>
       <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Withdrawals</h1>
-      <p className="text-zinc-500 mt-1">{payoutsOn ? "Send winnings straight to the user's UPI with one click via RazorpayX, or mark as paid manually." : "Pay the UPI, then mark as paid. Rejecting refunds the user's wallet."}</p>
-      {!payoutsOn && (
-        <div className="mt-4 rounded-lg border border-yellow-200 bg-yellow-50 text-yellow-900 text-sm px-4 py-3" data-testid="payouts-not-configured">
-          <b>Auto payouts off.</b> Activate RazorpayX on your Razorpay account and add your <b>RazorpayX account number</b> in <b>Payment settings</b> to pay winners automatically.
-        </div>
-      )}
+      <p className="text-zinc-500 mt-1">Pay the user's UPI from your bank/UPI app, then mark as paid. Rejecting refunds the user's wallet.</p>
       <div className="bg-white border border-zinc-200 rounded-lg mt-6 overflow-hidden">
         <Table>
           <TableHeader>
@@ -624,22 +598,14 @@ function WithdrawalsPanel() {
                 <TableCell className="tabular">{w.upi_id}</TableCell>
                 <TableCell>
                   <StatusBadge status={w.status} />
-                  {w.payout_id && <div className="text-[11px] text-zinc-500 mt-1 tabular" data-testid={`wd-payout-info-${w.id}`}>RazorpayX · {w.payout_status}{w.payout_utr ? ` · UTR ${w.payout_utr}` : ""}</div>}
+                  {w.payout_utr && <div className="text-[11px] text-zinc-500 mt-1 tabular" data-testid={`wd-payout-info-${w.id}`}>UTR {w.payout_utr}</div>}
                 </TableCell>
                 <TableCell className="text-right">
-                  {w.status === "pending" && (
+                  {(w.status === "pending" || w.status === "processing") && (
                     <div className="flex justify-end gap-2">
-                      {payoutsOn && (
-                        <Button size="sm" disabled={busyId === w.id} onClick={() => payout(w)} className="bg-zinc-950 hover:bg-zinc-800 text-emerald-300 font-bold" data-testid={`payout-wd-${w.id}`}>
-                          <Lightning size={14} weight="fill" className="mr-1" />{busyId === w.id ? "Sending..." : "Pay via Razorpay"}
-                        </Button>
-                      )}
                       <Button size="sm" onClick={() => decide(w, "approve")} className="bg-turf hover:bg-turf-red-dark" data-testid={`approve-wd-${w.id}`}><Check size={14} className="mr-1" />Paid</Button>
                       <Button size="sm" variant="destructive" onClick={() => decide(w, "reject")} data-testid={`reject-wd-${w.id}`}><X size={14} /></Button>
                     </div>
-                  )}
-                  {w.status === "processing" && (
-                    <Button size="sm" variant="outline" disabled={busyId === w.id} onClick={() => sync(w)} data-testid={`sync-wd-${w.id}`}>{busyId === w.id ? "Checking..." : "Check status"}</Button>
                   )}
                 </TableCell>
               </TableRow>
@@ -785,19 +751,15 @@ function WalletDialog({ user, onClose, onDone }) {
 }
 
 function PaymentSettingsPanel() {
-  const [form, setForm] = useState({ upi_id: "", payee_name: "", instructions: "", manual_upi_enabled: true, razorpayx_account_number: "" });
+  const [form, setForm] = useState({ upi_id: "", payee_name: "", instructions: "", manual_upi_enabled: true });
   const [qrPath, setQrPath] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [rzp, setRzp] = useState(null);
-  const [payoutsEnabled, setPayoutsEnabled] = useState(false);
   const apply = (d) => {
-    setForm({ upi_id: d.upi_id || "", payee_name: d.payee_name || "", instructions: d.instructions || "", manual_upi_enabled: d.manual_upi_enabled !== false, razorpayx_account_number: d.razorpayx_account_number || "" });
+    setForm({ upi_id: d.upi_id || "", payee_name: d.payee_name || "", instructions: d.instructions || "", manual_upi_enabled: d.manual_upi_enabled !== false });
     setQrPath(d.qr_path || null);
-    setPayoutsEnabled(!!d.razorpayx_enabled);
   };
   useEffect(() => {
     api.get("/admin/payment-settings").then(r => apply(r.data));
-    api.get("/payments/config").then(r => setRzp(r.data));
   }, []);
   const save = async () => {
     try { const r = await api.put("/admin/payment-settings", form); apply(r.data); toast.success("Payment settings saved"); }
@@ -820,40 +782,19 @@ function PaymentSettingsPanel() {
   return (
     <div>
       <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950">Payment settings</h1>
-      <p className="text-zinc-500 mt-1">Razorpay handles online payments with instant approval. Manual UPI (screenshot + approval) can be kept as a fallback or switched off.</p>
-      <div className={`mt-6 rounded-lg p-5 border flex items-center justify-between gap-4 ${rzp?.razorpay_enabled ? "bg-zinc-950 border-zinc-800 text-white" : "bg-yellow-50 border-yellow-200 text-yellow-900"}`} data-testid="razorpay-status-card">
-        <div>
-          <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest ${rzp?.razorpay_enabled ? "text-emerald-400" : "text-yellow-700"}`}>
-            <Lightning size={16} weight="fill" /> Razorpay {rzp?.razorpay_enabled ? "connected" : "not configured"}
-          </div>
-          <div className="text-sm mt-1 opacity-80">
-            {rzp?.razorpay_enabled ? <>Key <span className="tabular font-semibold" data-testid="razorpay-key-id">{rzp.key_id}</span> · payments auto-approve entries instantly.</> : "Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the backend environment."}
-          </div>
-        </div>
-        {rzp?.razorpay_enabled && <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-turf/20 text-emerald-300 text-xs font-bold px-3 py-1">{rzp.key_id.startsWith("rzp_test") ? "TEST MODE" : "LIVE"}</span>}
-      </div>
+      <p className="text-zinc-500 mt-1">Players pay to your UPI ID and upload a screenshot; you approve each payment here. Upload your QR so they can pay in one tap.</p>
       <div className="grid lg:grid-cols-2 gap-6 mt-6">
         <div className="bg-white border border-zinc-200 rounded-lg p-6 grid gap-4">
           <div className="flex items-center justify-between rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3">
             <div>
               <div className="text-sm font-bold text-zinc-900">Allow manual UPI transfer</div>
-              <div className="text-xs text-zinc-500">Users can still pay to your UPI ID and upload a screenshot for approval.</div>
+              <div className="text-xs text-zinc-500">Turn off to pause all payments temporarily.</div>
             </div>
             <Switch checked={form.manual_upi_enabled} onCheckedChange={(v) => setForm({ ...form, manual_upi_enabled: v })} data-testid="settings-manual-upi-switch" />
           </div>
           <Field label="UPI ID"><Input value={form.upi_id} onChange={(e) => setForm({ ...form, upi_id: e.target.value })} placeholder="yourname@upi" data-testid="settings-upi-input" /></Field>
           <Field label="Payee name"><Input value={form.payee_name} onChange={(e) => setForm({ ...form, payee_name: e.target.value })} data-testid="settings-payee-input" /></Field>
           <Field label="Instructions for users"><Textarea rows={3} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} placeholder="e.g. Add your mobile number in payment remark" data-testid="settings-instructions-input" /></Field>
-          <div className="rounded-md border border-zinc-200 bg-zinc-50 p-4 grid gap-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-bold text-zinc-900">RazorpayX auto payouts</div>
-              <span className={`inline-flex items-center gap-1 rounded-full text-[11px] font-bold px-2.5 py-0.5 ${payoutsEnabled ? "bg-emerald-100 text-emerald-800" : "bg-yellow-100 text-yellow-800"}`} data-testid="payouts-status-badge">
-                {payoutsEnabled ? "Active" : "Not configured"}
-              </span>
-            </div>
-            <div className="text-xs text-zinc-500">Enter your RazorpayX account number to pay winners to their UPI with one click. Find it in RazorpayX Dashboard → Account Details (a 10–16 digit virtual account number).</div>
-            <Input value={form.razorpayx_account_number} onChange={(e) => setForm({ ...form, razorpayx_account_number: e.target.value })} placeholder="e.g. 2323230012345678" className="tabular" data-testid="settings-rzpx-account-input" />
-          </div>
           <Button onClick={save} className="bg-turf hover:bg-turf-red-dark font-bold w-fit" data-testid="settings-save-btn">Save settings</Button>
         </div>
         <div className="bg-white border border-zinc-200 rounded-lg p-6 flex flex-col items-center justify-center gap-3">

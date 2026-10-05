@@ -12,7 +12,6 @@ import { toast } from "sonner";
 import { Baseball as CricketBall, Wallet, Trophy, Ticket, Clock, ArrowSquareOut, UploadSimple, CurrencyInr, Copy, DeviceMobile, WhatsappLogo, ShieldCheck, Lightning, Confetti, X, Bell, PlusCircle, Flag, ChartBar, Receipt, DownloadSimple, Info, IdentificationCard, Timer, ChatCenteredDots, PaperPlaneRight, WarningCircle, CaretDown, CaretLeft, FirstAid, CheckCircle, Coins, ArrowRight, Gift } from "@phosphor-icons/react";
 import { QRCodeSVG } from "qrcode.react";
 import { ScreenshotViewer } from "./AdminApp";
-import { payForContest, topUpWallet } from "../lib/razorpay";
 import { alertNewInboxItems } from "../lib/notifications";
 import { checkForUpdate } from "../lib/appUpdate";
 import FantasyApp from "./FantasyApp";
@@ -247,8 +246,8 @@ export default function UserApp() {
   const picked = matches.find((m) => m.id === matchFilter);
   const filterLabel = picked ? `${picked.team_a_short} vs ${picked.team_b_short}` : "";
   const liveContests = entries.filter((e) => ["pending", "approved"].includes(e.status)).length;
-  // Either payment rail is enough to let a player add money.
-  const canTopUp = !!config.razorpay_enabled || (!!config.manual_upi_enabled && !!config.admin_upi_id);
+  // UPI transfers are the top-up rail.
+  const canTopUp = !!config.manual_upi_enabled && !!config.admin_upi_id;
 
   return (
     <div className="min-h-screen bg-zinc-100" data-testid="user-app">
@@ -414,7 +413,7 @@ export default function UserApp() {
                         <div className="font-heading font-bold text-zinc-950">{e.contest_title}</div>
                         <StatusBadge status={e.status} />
                       </div>
-                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "razorpay" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-online-${e.id}`}>Paid online · {e.razorpay_payment_id}</span> : e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : `UTR: ${e.utr || "—"}`}</div>
+                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : `UTR: ${e.utr || "—"}`}</div>
                       {e.team_name && (
                         <div className="text-xs text-zinc-500 mt-1" data-testid={`entry-team-${e.id}`}>
                           <Flag size={12} weight="fill" className="inline mr-1 text-emerald-600" />Team {e.team_name}
@@ -776,14 +775,9 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [paying, setPaying] = useState(false);
   const [walletPaying, setWalletPaying] = useState(false);
-  const [showManual, setShowManual] = useState(false);
 
-  const rzpOn = !!config.razorpay_enabled;
   const manualOn = config.manual_upi_enabled !== false;
-
-  useEffect(() => { setUtr(""); setFile(null); setShowManual(!rzpOn); }, [contest, rzpOn]);
 
   if (!contest) return null;
   if (contest.kind === "fantasy" && !team) {
@@ -824,22 +818,6 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
     }
   };
 
-  const payOnline = async () => {
-    setPaying(true);
-    try {
-      const entry = await payForContest(contest, team?.id);
-      toast.success("Payment successful! You're in.");
-      onClose();
-      onPaid?.(entry);
-      onDone();
-    } catch (e) {
-      const msg = e?.response?.data?.detail || e?.message || "Payment failed";
-      if (msg !== "Payment cancelled") toast.error(msg); else toast("Payment cancelled");
-    } finally {
-      setPaying(false);
-    }
-  };
-
   const submit = async () => {
     if (!file) { toast.error("Upload payment screenshot"); return; }
     setBusy(true);
@@ -867,7 +845,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
           <DialogTitle className="font-heading text-2xl font-extrabold tracking-tight">Join {contest.title}</DialogTitle>
           <DialogDescription>
             Entry fee <span className="font-bold text-emerald-700 tabular">{money(contest.entry_fee)}</span>.
-            {rzpOn ? " Pay online for instant approval." : " Pay to the admin UPI below, then upload the payment screenshot."}
+            Pay to the admin UPI below, then upload the payment screenshot.
           </DialogDescription>
         </DialogHeader>
 
@@ -901,7 +879,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
               <Lightning size={16} weight="fill" className="mr-1" /> {walletPaying ? "Paying..." : `Pay ${money(fee)}`}
             </Button>
           ) : (
-            config.razorpay_enabled && (
+            onTopUp && canTopUp && (
               <Button variant="outline" onClick={() => { onClose(); onTopUp?.(); }} className="shrink-0 border-emerald-300 text-emerald-800 hover:bg-emerald-100 font-bold rounded-full" data-testid="wallet-topup-cta">
                 <PlusCircle size={16} weight="bold" className="mr-1" /> Add money
               </Button>
@@ -909,30 +887,12 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
           )}
         </div>
 
-        {rzpOn && (
-          <div className="bg-zinc-950 text-white rounded-lg p-5 border border-zinc-800" data-testid="razorpay-pay-box">
-            <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-widest">
-              <ShieldCheck size={16} weight="fill" /> Instant entry · Secured by Razorpay
-            </div>
-            <p className="text-sm text-zinc-300 mt-2">UPI, cards, net banking & wallets. Your play link unlocks the moment payment succeeds — no waiting for approval.</p>
-            <Button disabled={paying} onClick={payOnline} className="mt-4 w-full h-12 rounded-full bg-turf hover:bg-emerald-400 text-zinc-950 font-extrabold text-base active:scale-95" data-testid="razorpay-pay-btn">
-              <Lightning size={18} weight="fill" className="mr-1" /> {paying ? "Opening secure checkout..." : `Pay ${money(contest.entry_fee)} & join now`}
-            </Button>
-            {manualOn && (
-              <button type="button" onClick={() => setShowManual((v) => !v)} className="mt-3 w-full text-xs text-zinc-400 hover:text-white underline underline-offset-4" data-testid="toggle-manual-upi">
-                {showManual ? "Hide manual UPI option" : "Prefer manual UPI transfer + screenshot? Click here"}
-              </button>
-            )}
-          </div>
+        {!manualOn && (
+          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3" data-testid="payments-disabled-msg">UPI payments are temporarily unavailable. Please contact the admin.</p>
         )}
 
-        {!rzpOn && !manualOn && (
-          <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3" data-testid="payments-disabled-msg">Payments are temporarily unavailable. Please contact the admin.</p>
-        )}
-
-        {manualOn && showManual && (
+        {manualOn && (
           <div className="space-y-4" data-testid="manual-upi-section">
-            {rzpOn && <div className="text-xs font-bold uppercase tracking-widest text-zinc-500">Manual UPI (admin approval needed)</div>}
             <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4 flex gap-4 items-center">
               <div className="bg-white p-2 rounded-md border border-emerald-200 shrink-0 w-[126px]">
                 {config.qr_path ? <ScreenshotViewer path={config.qr_path} testId="upi-qr-image" className="w-full rounded" /> : <QRCodeSVG value={upiLink} size={110} data-testid="upi-qr" />}
@@ -966,7 +926,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="cancel-join">Cancel</Button>
-          {manualOn && showManual && (
+          {manualOn && (
             <Button disabled={busy} onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="submit-entry-btn">
               {busy ? "Submitting..." : "Submit for approval"}
             </Button>
@@ -1164,39 +1124,22 @@ function NotificationBell({ refreshToken }) {
 }
 
 /**
- * Wallet top-up. Both rails are offered whenever the organiser has them on:
- * the gateway credits instantly, a UPI transfer is held as a request until the
- * UTR is matched against the bank statement.
+ * Wallet top-up via UPI transfer. The request is held until the organiser
+ * matches the UTR against the bank statement, so money only becomes
+ * spendable after a human confirms it.
  */
 function TopUpDialog({ open, onClose, onDone, config = {} }) {
-  const online = !!config.razorpay_enabled;
   const upi = !!config.manual_upi_enabled && !!config.admin_upi_id;
-  const [mode, setMode] = useState("online");
   const [amt, setAmt] = useState("");
   const [utr, setUtr] = useState("");
   const [busy, setBusy] = useState(false);
   const presets = [100, 250, 500, 1000, 2000];
 
-  useEffect(() => { if (open) { setAmt(""); setUtr(""); setBusy(false); setMode(online ? "online" : "upi"); } }, [open, online]);
+  useEffect(() => { if (open) { setAmt(""); setUtr(""); setBusy(false); } }, [open]);
 
   const amount = parseFloat(amt);
   const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "PitchPlay")}&am=${amount || ""}&cu=INR&tn=${encodeURIComponent("Wallet top-up")}`;
   const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
-
-  const payOnline = async () => {
-    setBusy(true);
-    try {
-      await topUpWallet(amount);
-      toast.success(`${money(amount)} added to your wallet!`);
-      onClose();
-      onDone();
-    } catch (e) {
-      const msg = e?.response?.data?.detail || e?.message || "Top-up failed";
-      if (msg !== "Payment cancelled") toast.error(msg); else toast("Payment cancelled");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const submitUtr = async () => {
     if (utr.trim().length < 4) { toast.error("Enter the UTR from your payment app"); return; }
@@ -1216,7 +1159,7 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
   const submit = () => {
     if (!amount || amount < 1) { toast.error("Enter an amount of ₹1 or more"); return; }
     if (amount > 100000) { toast.error("Maximum top-up is ₹1,00,000"); return; }
-    if (mode === "online") payOnline(); else submitUtr();
+    submitUtr();
   };
 
   return (
@@ -1225,27 +1168,10 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
         <DialogHeader>
           <DialogTitle className="font-heading text-2xl font-extrabold">Add money to wallet</DialogTitle>
           <DialogDescription>
-            {mode === "online"
-              ? "Pay by UPI, card or net banking. Your balance is ready the moment it succeeds."
-              : "Transfer to the UPI id below, then submit the reference so we can credit you."}
+            Transfer to the UPI id below, then submit the reference so we can credit you.
           </DialogDescription>
         </DialogHeader>
 
-        {online && upi && (
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-zinc-100 border border-zinc-200" data-testid="topup-mode-switch">
-            {[["online", "Instant pay"], ["upi", "UPI transfer"]].map(([k, label]) => (
-              <button
-                key={k}
-                type="button"
-                onClick={() => setMode(k)}
-                className={`py-2 rounded-md text-sm font-bold transition-colors ${mode === k ? "bg-white text-zinc-950 shadow-sm" : "text-zinc-500 hover:text-zinc-800"}`}
-                data-testid={`topup-mode-${k}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
             {presets.map((p) => (
@@ -1265,7 +1191,7 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
             <Input value={amt} onChange={(e) => setAmt(e.target.value)} inputMode="decimal" placeholder="Enter amount" className="mt-2 tabular" data-testid="topup-amount-input" />
           </div>
 
-          {mode === "upi" && (
+          {upi ? (
             <div className="space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4" data-testid="topup-upi-panel">
               <div className="flex items-center gap-3">
                 {config.qr_path
@@ -1295,16 +1221,14 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
                 </p>
               </div>
             </div>
+          ) : (
+            <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3" data-testid="payments-disabled-msg">UPI payments are temporarily unavailable. Please contact the admin.</p>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="topup-cancel">Cancel</Button>
-          <Button disabled={busy || (!online && !upi)} onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="topup-pay-btn">
-            {mode === "online" ? (
-              <><Lightning size={16} weight="fill" className="mr-1" /> {busy ? "Opening checkout..." : "Proceed to pay"}</>
-            ) : (
-              <><CheckCircle size={16} weight="bold" className="mr-1" /> {busy ? "Submitting..." : "Submit UTR"}</>
-            )}
+          <Button disabled={busy || !upi} onClick={submit} className="bg-turf hover:bg-turf-red-dark font-bold" data-testid="topup-pay-btn">
+            <CheckCircle size={16} weight="bold" className="mr-1" /> {busy ? "Submitting..." : "Submit UTR"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1347,7 +1271,7 @@ function SuccessBanner({ entry, onClose }) {
       <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-100">
-            <ShieldCheck size={16} weight="fill" /> Payment confirmed{entry.razorpay_payment_id ? ` · ${entry.razorpay_payment_id}` : entry.payment_method === "wallet" ? " · Paid from wallet" : ""}
+            <ShieldCheck size={16} weight="fill" /> Payment confirmed{entry.payment_method === "wallet" ? " · Paid from wallet" : ""}
           </div>
           <h2 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tighter mt-2">You're in! 🎉</h2>
           <p className="text-emerald-50 mt-1">Your spot in <b>{entry.contest_title}</b> is locked. Head over and set up your team before the match starts.</p>

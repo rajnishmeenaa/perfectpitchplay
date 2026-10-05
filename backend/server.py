@@ -1,6 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Form, Header, Query, Request
 from fastapi.responses import Response
-import razorpay
 import json
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -45,16 +44,6 @@ STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = os.environ.get("APP_NAME", "fantasy-contest")
 storage_key: Optional[str] = None
-
-# Razorpay
-RZP_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
-RZP_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
-RZP_WEBHOOK_SECRET = os.environ.get("RAZORPAY_WEBHOOK_SECRET", "")
-rzp_client = razorpay.Client(auth=(RZP_KEY_ID, RZP_KEY_SECRET)) if RZP_KEY_ID and RZP_KEY_SECRET else None
-RZPX_ACCOUNT_NUMBER = os.environ.get("RAZORPAYX_ACCOUNT_NUMBER", "").strip()
-RZPX_API = "https://api.razorpay.com/v1"
-payouts_enabled = bool(rzp_client and RZPX_ACCOUNT_NUMBER)
-
 
 def init_storage(force: bool = False):
     global storage_key
@@ -277,22 +266,6 @@ class PaymentSettingsBody(BaseModel):
     payee_name: str = Field(default="", max_length=60)
     instructions: str = Field(default="", max_length=500)
     manual_upi_enabled: bool = True
-    razorpayx_account_number: str = Field(default="", max_length=40)
-
-
-class RzpOrderBody(BaseModel):
-    contest_id: str
-    team_id: Optional[str] = None
-
-
-class RzpVerifyBody(BaseModel):
-    razorpay_order_id: str
-    razorpay_payment_id: str
-    razorpay_signature: str
-
-
-class WalletTopupOrderBody(BaseModel):
-    amount: float = Field(gt=0, le=100000)
 
 
 class WalletEntryBody(BaseModel):
@@ -582,22 +555,11 @@ async def get_payment_settings() -> dict:
     if not s:
         s = {"key": "payment", "upi_id": ADMIN_UPI_ID, "payee_name": "Admin", "instructions": ""}
     s.setdefault("manual_upi_enabled", True)
-    s.setdefault("razorpayx_account_number", RZPX_ACCOUNT_NUMBER)
     return s
-
-
-async def resolve_rzpx_account() -> str:
-    s = await get_payment_settings()
-    return (s.get("razorpayx_account_number") or "").strip() or RZPX_ACCOUNT_NUMBER
 
 
 async def payment_settings_admin_view() -> dict:
-    s = await get_payment_settings()
-    acct = (s.get("razorpayx_account_number") or "").strip() or RZPX_ACCOUNT_NUMBER
-    s["razorpayx_account_number"] = acct
-    s["razorpay_connected"] = rzp_client is not None
-    s["razorpayx_enabled"] = bool(rzp_client and acct)
-    return s
+    return await get_payment_settings()
 
 
 async def get_joinable_contest(contest_id: str, user: dict) -> dict:
@@ -890,7 +852,7 @@ async def create_entry(
     rate_limit("join", user["id"])
     settings = await get_payment_settings()
     if not settings.get("manual_upi_enabled", True):
-        raise HTTPException(status_code=400, detail="Manual UPI payment is disabled. Please pay online.")
+        raise HTTPException(status_code=400, detail="Manual UPI payment is disabled. Try again later.")
     contest = await get_joinable_contest(contest_id, user)
     team = await resolve_entry_team(contest, user, team_id or None)
 
@@ -1009,210 +971,6 @@ async def create_entry_wallet(body: WalletEntryBody, user=Depends(get_current_us
     return doc
 
 
-# ---------- Razorpay payments ----------
-@api_router.get("/payments/config")
-async def payments_config(user=Depends(get_current_user)):
-    s = await get_payment_settings()
-    acct = (s.get("razorpayx_account_number") or "").strip() or RZPX_ACCOUNT_NUMBER
-    return {"razorpay_enabled": rzp_client is not None, "key_id": RZP_KEY_ID if rzp_client else None,
-            "manual_upi_enabled": s.get("manual_upi_enabled", True), "payouts_enabled": bool(rzp_client and acct)}
-
-
-@api_router.post("/payments/razorpay/order")
-async def rzp_create_order(body: RzpOrderBody, user=Depends(get_current_user)):
-    if not rzp_client:
-        raise HTTPException(status_code=503, detail="Online payments not configured")
-    contest = await get_joinable_contest(body.contest_id, user)
-    team = await resolve_entry_team(contest, user, body.team_id)
-    amount_paise = int(round(float(contest["entry_fee"]) * 100))
-    if amount_paise < 100:
-        raise HTTPException(status_code=400, detail="Entry fee must be at least ₹1 for online payment")
-    order_ref = str(uuid.uuid4())
-    try:
-        order = rzp_client.order.create({
-            "amount": amount_paise,
-            "currency": "INR",
-            "receipt": order_ref[:40],
-            "payment_capture": 1,
-            "notes": {"contest_id": contest["id"], "user_id": user["id"], "order_ref": order_ref},
-        })
-    except Exception as e:
-        logger.exception("Razorpay order create failed")
-        raise HTTPException(status_code=400, detail=f"Payment gateway error: {e}")
-    await db.payment_orders.insert_one({
-        "id": order_ref,
-        "kind": "entry",
-        "razorpay_order_id": order["id"],
-        "contest_id": contest["id"],
-        "contest_title": contest["title"],
-        "contest_kind": contest.get("kind", "classic"),
-        "team_id": team["id"] if team else None,
-        "team_name": team.get("name") if team else None,
-        "user_id": user["id"],
-        "user_name": user["name"],
-        "user_mobile": user["mobile"],
-        "amount": contest["entry_fee"],
-        "amount_paise": amount_paise,
-        "status": "created",
-        "created_at": now_iso(),
-    })
-    return {
-        "order_id": order["id"],
-        "amount": amount_paise,
-        "currency": "INR",
-        "key_id": RZP_KEY_ID,
-        "contest_title": contest["title"],
-        "prefill": {"name": user["name"], "contact": user["mobile"]},
-    }
-
-
-async def fulfill_rzp_order(razorpay_order_id: str, payment_id: str, source: str) -> dict:
-    order = await db.payment_orders.find_one({"razorpay_order_id": razorpay_order_id}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    existing = await db.entries.find_one({"razorpay_order_id": razorpay_order_id}, {"_id": 0})
-    if existing:
-        return existing
-    entry = {
-        "id": str(uuid.uuid4()),
-        "contest_id": order["contest_id"],
-        "contest_title": order["contest_title"],
-        "user_id": order["user_id"],
-        "user_name": order["user_name"],
-        "user_mobile": order["user_mobile"],
-        "entry_fee": order["amount"],
-        "utr": payment_id,
-        "screenshot_path": None,
-        "payment_method": "razorpay",
-        "contest_kind": order.get("contest_kind", "classic"),
-        "team_id": order.get("team_id"),
-        "team_name": order.get("team_name"),
-        "razorpay_order_id": razorpay_order_id,
-        "razorpay_payment_id": payment_id,
-        "status": "approved",
-        "decision_note": f"Auto-approved via Razorpay ({source})",
-        "decided_at": now_iso(),
-        "winner_prize": 0.0,
-        "created_at": now_iso(),
-    }
-    await db.entries.insert_one(entry)
-    entry.pop("_id", None)
-    await db.payment_orders.update_one(
-        {"razorpay_order_id": razorpay_order_id},
-        {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "entry_id": entry["id"]}},
-    )
-    await push_notification(
-        order["user_id"], "entry", "Payment successful",
-        f"Your entry for {order['contest_title']} is confirmed. Good luck!",
-        {"contest_id": order["contest_id"], "entry_id": entry["id"]},
-    )
-    return entry
-
-
-@api_router.post("/payments/razorpay/verify")
-async def rzp_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
-    if not rzp_client:
-        raise HTTPException(status_code=503, detail="Online payments not configured")
-    order = await db.payment_orders.find_one({"razorpay_order_id": body.razorpay_order_id, "user_id": user["id"]}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    try:
-        rzp_client.utility.verify_payment_signature(body.model_dump())
-    except razorpay.errors.SignatureVerificationError:
-        await db.payment_orders.update_one({"razorpay_order_id": body.razorpay_order_id}, {"$set": {"status": "signature_failed"}})
-        raise HTTPException(status_code=400, detail="Payment verification failed")
-    entry = await fulfill_rzp_order(body.razorpay_order_id, body.razorpay_payment_id, "checkout")
-    contest = await db.contests.find_one({"id": entry["contest_id"]}, {"_id": 0})
-    entry["external_link"] = contest.get("external_link") if contest else None
-    return entry
-
-
-# ---------- Wallet top-up (Razorpay) ----------
-@api_router.post("/wallet/topup/order")
-async def wallet_topup_order(body: WalletTopupOrderBody, user=Depends(get_current_user)):
-    rate_limit("topup", user["id"])
-    await enforce_deposit_safety(user, float(body.amount))
-    if not rzp_client:
-        raise HTTPException(status_code=503, detail="Online payments not configured")
-    if body.amount < 1:
-        raise HTTPException(status_code=400, detail="Minimum top-up is ₹1")
-    amount_paise = int(round(float(body.amount) * 100))
-    order_ref = str(uuid.uuid4())
-    try:
-        order = rzp_client.order.create({
-            "amount": amount_paise,
-            "currency": "INR",
-            "receipt": order_ref[:40],
-            "payment_capture": 1,
-            "notes": {"kind": "topup", "user_id": user["id"], "order_ref": order_ref},
-        })
-    except Exception as e:
-        logger.exception("Razorpay top-up order create failed")
-        raise HTTPException(status_code=400, detail=f"Payment gateway error: {e}")
-    await db.payment_orders.insert_one({
-        "id": order_ref,
-        "kind": "topup",
-        "razorpay_order_id": order["id"],
-        "user_id": user["id"],
-        "user_name": user["name"],
-        "user_mobile": user.get("mobile"),
-        "amount": float(body.amount),
-        "amount_paise": amount_paise,
-        "status": "created",
-        "created_at": now_iso(),
-    })
-    return {
-        "order_id": order["id"],
-        "amount": amount_paise,
-        "currency": "INR",
-        "key_id": RZP_KEY_ID,
-        "prefill": {"name": user["name"], "contact": user.get("mobile") or ""},
-    }
-
-
-async def fulfill_topup_order(razorpay_order_id: str, payment_id: str, source: str) -> dict:
-    order = await db.payment_orders.find_one({"razorpay_order_id": razorpay_order_id}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    if order.get("topup_credited"):
-        return order
-    amount = float(order["amount"])
-    await db.users.update_one({"id": order["user_id"]}, {"$inc": {"wallet_balance": amount}})
-    await db.wallet_logs.insert_one({
-        "id": str(uuid.uuid4()), "user_id": order["user_id"], "amount": amount,
-        "note": f"Wallet top-up via Razorpay ({payment_id})", "by": "system", "created_at": now_iso(),
-    })
-    await db.payment_orders.update_one(
-        {"razorpay_order_id": razorpay_order_id},
-        {"$set": {"status": "paid", "razorpay_payment_id": payment_id, "paid_at": now_iso(), "topup_credited": True}},
-    )
-    await add_deposit(order["user_id"], amount)
-    await maybe_pay_referral_bonus(order["user_id"])
-    await push_notification(
-        order["user_id"], "topup", "Wallet topped up",
-        f"{inr(amount)} has been added to your wallet.",
-        {"amount": amount, "payment_id": payment_id},
-    )
-    return order
-
-
-@api_router.post("/wallet/topup/verify")
-async def wallet_topup_verify(body: RzpVerifyBody, user=Depends(get_current_user)):
-    if not rzp_client:
-        raise HTTPException(status_code=503, detail="Online payments not configured")
-    order = await db.payment_orders.find_one({"razorpay_order_id": body.razorpay_order_id, "user_id": user["id"]}, {"_id": 0})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    try:
-        rzp_client.utility.verify_payment_signature(body.model_dump())
-    except razorpay.errors.SignatureVerificationError:
-        await db.payment_orders.update_one({"razorpay_order_id": body.razorpay_order_id}, {"$set": {"status": "signature_failed"}})
-        raise HTTPException(status_code=400, detail="Payment verification failed")
-    await fulfill_topup_order(body.razorpay_order_id, body.razorpay_payment_id, "checkout")
-    me = await db.users.find_one({"id": user["id"]}, {"_id": 0, "wallet_balance": 1})
-    return {"ok": True, "wallet_balance": (me or {}).get("wallet_balance", 0.0)}
-
-
 # ---------- Wallet top-up by UPI transfer (no gateway) ----------
 #
 # The gateway is not always available — a new account, a downtime, or a user who
@@ -1230,7 +988,7 @@ async def wallet_topup_manual(body: ManualTopupBody, user=Depends(get_current_us
     rate_limit("topup", user["id"])
     settings = await get_payment_settings()
     if not settings.get("manual_upi_enabled", True):
-        raise HTTPException(status_code=400, detail="UPI transfers are paused right now. Please pay online.")
+        raise HTTPException(status_code=400, detail="UPI transfers are paused right now. Try again later.")
     if not (settings.get("upi_id") or "").strip():
         raise HTTPException(status_code=503, detail="No UPI id is set up for wallet top-ups yet")
     await enforce_deposit_safety(user, float(body.amount))
@@ -1324,134 +1082,6 @@ async def decide_topup(request_id: str, body: TopupDecisionBody, admin=Depends(r
     return {"ok": True, "status": "approved" if action == "approve" else "rejected"}
 
 
-PAYOUT_FINAL_OK = {"processed"}
-PAYOUT_FINAL_FAIL = {"reversed", "failed", "rejected", "cancelled"}
-
-
-async def apply_payout_status(w: dict, payout: dict) -> dict:
-    ps = payout.get("status", "")
-    upd = {"payout_status": ps, "payout_utr": payout.get("utr"), "payout_synced_at": now_iso()}
-    if ps in PAYOUT_FINAL_OK and w["status"] != "paid":
-        upd.update({"status": "paid", "decided_at": now_iso(), "decision_note": f"Paid via RazorpayX payout {payout['id']}"})
-        await push_notification(
-            w["user_id"], "payout", "Withdrawal paid",
-            f"{inr(w['amount'])} has been transferred to {w.get('upi_id', 'your UPI')}.",
-            {"withdrawal_id": w["id"], "amount": w["amount"]},
-        )
-    elif ps in PAYOUT_FINAL_FAIL and w["status"] not in ("rejected", "paid"):
-        reason = payout.get("failure_reason") or (payout.get("status_details") or {}).get("description") or ps
-        await db.users.update_one({"id": w["user_id"]}, {"$inc": {"wallet_balance": w["amount"]}})
-        upd.update({"status": "rejected", "decided_at": now_iso(), "decision_note": f"Payout {ps}: {reason}. Amount refunded to wallet."})
-        await push_notification(
-            w["user_id"], "payout", "Withdrawal failed — refunded",
-            f"Your payout of {inr(w['amount'])} could not be completed ({reason}). The amount has been refunded to your wallet.",
-            {"withdrawal_id": w["id"], "amount": w["amount"]},
-        )
-    elif ps and ps not in PAYOUT_FINAL_OK | PAYOUT_FINAL_FAIL and w["status"] == "pending":
-        upd["status"] = "processing"
-    await db.withdrawals.update_one({"id": w["id"]}, {"$set": upd})
-    return await db.withdrawals.find_one({"id": w["id"]}, {"_id": 0})
-
-
-def rzpx_request(method: str, path: str, **kwargs) -> dict:
-    resp = requests.request(method, f"{RZPX_API}{path}", auth=(RZP_KEY_ID, RZP_KEY_SECRET), timeout=30, **kwargs)
-    data = resp.json() if resp.content else {}
-    if resp.status_code >= 400:
-        desc = (data.get("error") or {}).get("description") or resp.text[:200]
-        if "not found on the server" in desc.lower():
-            desc = "RazorpayX is not activated on this Razorpay account. Activate RazorpayX and set the account number."
-        raise HTTPException(status_code=400, detail=f"RazorpayX: {desc}")
-    return data
-
-
-@api_router.post("/withdrawals/{wid}/payout")
-async def payout_withdrawal(wid: str, admin=Depends(require_admin)):
-    acct = await resolve_rzpx_account()
-    if not rzp_client or not acct:
-        raise HTTPException(status_code=503, detail="Auto payouts not configured. Add your RazorpayX account number in Payment settings.")
-    w = await db.withdrawals.find_one({"id": wid}, {"_id": 0})
-    if not w:
-        raise HTTPException(status_code=404, detail="Withdrawal not found")
-    if w["status"] != "pending":
-        raise HTTPException(status_code=400, detail=f"Already {w['status']}")
-    body = {
-        "account_number": acct,
-        "amount": int(round(float(w["amount"]) * 100)),
-        "currency": "INR",
-        "mode": "UPI",
-        "purpose": "payout",
-        "fund_account": {
-            "account_type": "vpa",
-            "vpa": {"address": w["upi_id"]},
-            "contact": {"name": w["user_name"], "contact": w["user_mobile"], "type": "customer", "reference_id": w["user_id"][:40]},
-        },
-        "queue_if_low_balance": True,
-        "reference_id": wid[:40],
-        "narration": "PitchPlay winnings",
-    }
-    payout = rzpx_request("POST", "/payouts", json=body, headers={"X-Payout-Idempotency": wid})
-    await db.withdrawals.update_one({"id": wid}, {"$set": {"payout_id": payout["id"], "payout_method": "razorpayx", "payout_requested_at": now_iso(), "payout_by": admin["id"]}})
-    w["payout_id"] = payout["id"]
-    return await apply_payout_status(w, payout)
-
-
-@api_router.post("/withdrawals/{wid}/payout/sync")
-async def sync_payout(wid: str, admin=Depends(require_admin)):
-    w = await db.withdrawals.find_one({"id": wid}, {"_id": 0})
-    if not w or not w.get("payout_id"):
-        raise HTTPException(status_code=404, detail="No payout for this withdrawal")
-    payout = rzpx_request("GET", f"/payouts/{w['payout_id']}")
-    return await apply_payout_status(w, payout)
-
-
-def _sig_ok(raw: bytes, signature: str, secret: str) -> bool:
-    try:
-        rzp_client.utility.verify_webhook_signature(raw.decode(), signature, secret)
-        return True
-    except razorpay.errors.SignatureVerificationError:
-        return False
-
-
-@api_router.post("/payments/razorpay/webhook")
-async def rzp_webhook(request: Request):
-    if not rzp_client or not RZP_WEBHOOK_SECRET:
-        raise HTTPException(status_code=503, detail="Webhook not configured")
-    raw = await request.body()
-    signature = request.headers.get("X-Razorpay-Signature", "")
-    secrets_to_try = [s for s in (RZP_WEBHOOK_SECRET, os.environ.get("RAZORPAYX_WEBHOOK_SECRET", "")) if s]
-    if not any(_sig_ok(raw, signature, s) for s in secrets_to_try):
-        raise HTTPException(status_code=400, detail="Invalid webhook signature")
-    payload = json.loads(raw)
-    event = payload.get("event") or ""
-    pay = (payload.get("payload", {}).get("payment", {}) or {}).get("entity", {}) or {}
-    if event in ("payment.captured", "order.paid") and pay.get("order_id"):
-        order = await db.payment_orders.find_one({"razorpay_order_id": pay["order_id"]})
-        if order:
-            if order.get("kind") == "topup":
-                await fulfill_topup_order(pay["order_id"], pay["id"], "webhook")
-            else:
-                await fulfill_rzp_order(pay["order_id"], pay["id"], "webhook")
-    elif event == "payment.failed" and pay.get("order_id"):
-        await db.payment_orders.update_one(
-            {"razorpay_order_id": pay["order_id"], "status": "created"},
-            {"$set": {"status": "failed", "failure_reason": pay.get("error_description")}},
-        )
-    elif event.startswith("payout."):
-        payout = (payload.get("payload", {}).get("payout", {}) or {}).get("entity", {}) or {}
-        if payout.get("id"):
-            w = await db.withdrawals.find_one({"payout_id": payout["id"]}, {"_id": 0})
-            if w:
-                await apply_payout_status(w, payout)
-    return {"ok": True}
-
-
-@api_router.get("/admin/payments/razorpay")
-async def admin_rzp_orders(admin=Depends(require_admin)):
-    items = await db.payment_orders.find({}, {"_id": 0}).sort("created_at", -1).to_list(1000)
-    collected = sum(o["amount"] for o in items if o.get("status") == "paid")
-    return {"orders": items, "total_collected": collected}
-
-
 @api_router.get("/entries/mine")
 async def my_entries(user=Depends(get_current_user)):
     items = await db.entries.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -1532,7 +1162,7 @@ async def wallet_config(user=Depends(get_current_user)):
     s = await get_payment_settings()
     g = await get_guard_settings()
     return {"admin_upi_id": s["upi_id"], "payee_name": s.get("payee_name", ""), "instructions": s.get("instructions", ""), "qr_path": s.get("qr_path"),
-            "manual_upi_enabled": s.get("manual_upi_enabled", True), "razorpay_enabled": rzp_client is not None, "razorpay_key_id": RZP_KEY_ID if rzp_client else None,
+            "manual_upi_enabled": s.get("manual_upi_enabled", True),
             "min_withdrawal": float(g.get("min_withdrawal") or 0), "max_withdrawal_per_day": float(g.get("max_withdrawal_per_day") or 0)}
 
 
@@ -1592,8 +1222,7 @@ async def admin_get_payment_settings(admin=Depends(require_admin)):
 @api_router.put("/admin/payment-settings")
 async def admin_put_payment_settings(body: PaymentSettingsBody, admin=Depends(require_admin)):
     doc = {"key": "payment", "upi_id": body.upi_id.strip(), "payee_name": body.payee_name.strip(),
-           "instructions": body.instructions.strip(), "manual_upi_enabled": body.manual_upi_enabled,
-           "razorpayx_account_number": body.razorpayx_account_number.strip(), "updated_at": now_iso()}
+           "instructions": body.instructions.strip(), "manual_upi_enabled": body.manual_upi_enabled, "updated_at": now_iso()}
     await db.settings.update_one({"key": "payment"}, {"$set": doc}, upsert=True)
     return await payment_settings_admin_view()
 
@@ -1694,7 +1323,7 @@ async def decide_withdrawal(wid: str, body: ApproveBody, admin=Depends(require_a
     w = await db.withdrawals.find_one({"id": wid})
     if not w:
         raise HTTPException(status_code=404, detail="Withdrawal not found")
-    if w["status"] != "pending":
+    if w["status"] not in ("pending", "processing"):
         raise HTTPException(status_code=400, detail=f"Already {w['status']}")
     if body.action == "approve":
         await db.withdrawals.update_one(
@@ -1808,7 +1437,6 @@ async def admin_stats(admin=Depends(require_admin)):
     total_contests = await db.contests.count_documents({})
     pending_entries = await db.entries.count_documents({"status": "pending"})
     pending_withdrawals = await db.withdrawals.count_documents({"status": "pending"})
-    online_paid = await db.payment_orders.find({"status": "paid"}, {"_id": 0, "amount": 1}).to_list(10000)
     total_matches = await db.matches.count_documents({})
     fantasy_teams = await db.fantasy_teams.count_documents({})
     unsettled = await db.contests.count_documents({"kind": "fantasy", "settled_at": {"$exists": False}})
@@ -1817,8 +1445,6 @@ async def admin_stats(admin=Depends(require_admin)):
         "total_contests": total_contests,
         "pending_entries": pending_entries,
         "pending_withdrawals": pending_withdrawals,
-        "online_payments_count": len(online_paid),
-        "online_collected": sum(o["amount"] for o in online_paid),
         "total_matches": total_matches,
         "fantasy_teams": fantasy_teams,
         "fantasy_contests_unsettled": unsettled,
@@ -3983,8 +3609,8 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 6, "version_name": "1.5.0", "apk_url": "",
-                        "notes": "Turf redesign: brand-red interface, playing XI centre, contest chat",
+APP_VERSION_DEFAULTS = {"version_code": 7, "version_name": "1.6.0", "apk_url": "",
+                        "notes": "UPI-only payments: Razorpay removed, manual UPI everywhere",
                         "force_update": False}
 
 
@@ -4075,7 +3701,7 @@ async def admin_export_payouts(status: Optional[str] = None, admin=Depends(requi
 
 
 # ---------- Admin audit trail ----------
-AUDIT_SKIP_PREFIXES = ("/api/auth/", "/api/razorpay/", "/api/files", "/api/wallet/topup", "/api/payments/")
+AUDIT_SKIP_PREFIXES = ("/api/auth/", "/api/files", "/api/wallet/topup", "/api/payments/")
 
 
 @app.middleware("http")
