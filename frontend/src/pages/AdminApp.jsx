@@ -61,7 +61,7 @@ export default function AdminApp() {
 
   return (
     <div className="min-h-screen bg-zinc-100 flex" data-testid="admin-app">
-      <aside className="w-60 bg-white border-r border-zinc-200 sticky top-0 h-screen flex flex-col">
+      <aside className="w-60 bg-white border-r border-zinc-200 sticky top-0 h-screen flex flex-col overflow-y-auto">
         <div className="p-5 border-b border-zinc-100">
           <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950">
             <CricketBall weight="fill" className="text-emerald-600" size={24} />
