@@ -389,6 +389,7 @@ class SettleBody(BaseModel):
 class EnterMultiBody(BaseModel):
     team_id: str
     contest_ids: List[str] = Field(min_length=1, max_length=12)
+    pay_with: Optional[str] = None  # "coins" | "wallet" (default)
 
 
 class LiveSyncBody(BaseModel):
@@ -562,13 +563,95 @@ async def payment_settings_admin_view() -> dict:
     return await get_payment_settings()
 
 
-async def get_joinable_contest(contest_id: str, user: dict) -> dict:
+# ---------- Pitch Coins (the artificial play currency) ----------
+#
+# Real money never moves in coins mode: contests are joined with Pitch Coins,
+# prizes pay out in coins, and the Store "sells" packs through a sandbox billing
+# seam that is ready to be swapped for Google Play Billing later. Every coin
+# movement lands in the coins_ledger, so balances are always auditable.
+
+COIN_PACK_DEFAULTS = [
+    {"id": "coins_100", "kind": "coins", "title": "Starter Pack", "coins": 100, "price_inr": 0, "tag": "Great to start", "active": True},
+    {"id": "coins_250", "kind": "coins", "title": "Player Pack", "coins": 250, "price_inr": 0, "tag": "Popular", "active": True},
+    {"id": "coins_500", "kind": "coins", "title": "Pro Pack", "coins": 500, "price_inr": 0, "tag": "Best value", "active": True},
+    {"id": "plus_30d", "kind": "plus", "title": "PitchPlus", "coins": 0, "price_inr": 0, "tag": "Discount every entry", "active": True},
+]
+
+
+async def get_coin_settings() -> dict:
+    s = await db.settings.find_one({"key": "coins"}, {"_id": 0}) or {}
+    packs = s.get("packs")
+    return {
+        "enabled": bool(s.get("enabled", True)),
+        "signup_bonus": int(s.get("signup_bonus", 100)),
+        "daily_bonus": int(s.get("daily_bonus", 25)),
+        "plus_discount_pct": int(s.get("plus_discount_pct", 10)),
+        "plus_price_coins": int(s.get("plus_price_coins", 499)),
+        "plus_days": int(s.get("plus_days", 30)),
+        "billing_mode": s.get("billing_mode") or "sandbox",  # sandbox | play
+        "packs": [dict(p) for p in packs] if packs is not None else [dict(p) for p in COIN_PACK_DEFAULTS],
+        "updated_at": s.get("updated_at"),
+    }
+
+
+def coins_fmt(n) -> str:
+    v = float(n or 0)
+    return f"{int(v):,}" if abs(v - round(v)) < 0.005 else f"{v:,.2f}"
+
+
+def plus_active(user: dict) -> bool:
+    until = user.get("plus_until")
+    return bool(until) and str(until) > now_iso()
+
+
+async def coin_balance(user_id: str) -> float:
+    u = await db.users.find_one({"id": user_id}, {"_id": 0, "coins": 1}) or {}
+    return round(float(u.get("coins") or 0), 2)
+
+
+async def ledger_coins(user_id: str, delta: float, reason: str, note: str = "", balance_after: float = None) -> None:
+    if balance_after is None:
+        balance_after = await coin_balance(user_id)
+    await db.coins_ledger.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user_id, "delta": round(float(delta), 2),
+        "reason": reason, "note": note or "", "balance_after": round(float(balance_after), 2),
+        "created_at": now_iso(),
+    })
+
+
+async def grant_coins(user_id: str, delta: float, reason: str, note: str = "") -> float:
+    """Credit (positive) or debit (negative) coins atomically and write the ledger."""
+    delta = round(float(delta), 2)
+    if delta > 0:
+        res = await db.users.update_one({"id": user_id}, {"$inc": {"coins": delta}})
+        if res.matched_count == 0:
+            raise HTTPException(status_code=404, detail="User not found")
+    elif delta < 0:
+        res = await db.users.update_one({"id": user_id, "coins": {"$gte": -delta}}, {"$inc": {"coins": delta}})
+        if res.matched_count == 0:
+            raise HTTPException(status_code=400, detail="Not enough coins")
+    bal = await coin_balance(user_id)
+    if delta != 0:
+        await ledger_coins(user_id, delta, reason, note, bal)
+    return bal
+
+
+async def grant_signup_coins(user_id: str) -> int:
+    """Welcome coins for a brand-new account (0 when coins are disabled)."""
+    s = await get_coin_settings()
+    if not s["enabled"] or s["signup_bonus"] <= 0:
+        return 0
+    await grant_coins(user_id, s["signup_bonus"], "signup_bonus", "Welcome to PitchPlay — here's your starting stack")
+    return s["signup_bonus"]
+
+
+async def get_joinable_contest(contest_id: str, user: dict, coins_mode: bool = False) -> dict:
     if user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot join contests")
     contest = await db.contests.find_one({"id": contest_id}, {"_id": 0})
     if not contest:
         raise HTTPException(status_code=404, detail="Contest not found")
-    await enforce_play_safety(user, float(contest.get("entry_fee") or 0))
+    await enforce_play_safety(user, float(contest.get("entry_fee") or 0), coins=coins_mode)
     if contest.get("status") != "open":
         raise HTTPException(status_code=400, detail="Contest not open")
     mt = contest.get("match_time")
@@ -611,15 +694,17 @@ async def signup(body: SignupBody, request: Request):
         "role": "user",
         "wallet_balance": 0.0,
         "bonus_balance": 0.0,
+        "coins": 0,
         "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
     rate_limit_clear("auth", key)
     await ensure_referral_code(user_id)
     await attribute_referral(user_id, body.ref)
+    signup_coins = await grant_signup_coins(user_id)
     token = create_token(user_id, "user")
     return {"token": token, "user": {"id": user_id, "name": doc["name"], "mobile": mobile, "role": "user",
-                                     "wallet_balance": 0.0, "bonus_balance": 0.0}}
+                                     "wallet_balance": 0.0, "bonus_balance": 0.0, "coins": signup_coins}}
 
 
 @api_router.post("/auth/login")
@@ -645,6 +730,7 @@ async def login(body: LoginBody, request: Request):
             "role": user["role"],
             "wallet_balance": user.get("wallet_balance", 0.0),
             "bonus_balance": round(float(user.get("bonus_balance") or 0), 2),
+            "coins": round(float(user.get("coins") or 0), 2),
         },
     }
 
@@ -660,6 +746,8 @@ async def me(user=Depends(get_current_user)):
         "role": user["role"],
         "wallet_balance": user.get("wallet_balance", 0.0),
         "bonus_balance": round(float(user.get("bonus_balance") or 0), 2),
+        "coins": round(float(user.get("coins") or 0), 2),
+        "plus_until": user.get("plus_until"),
         "needs_mobile": not user.get("mobile"),
     }
 
@@ -691,9 +779,12 @@ async def google_session(body: GoogleSessionBody):
             "auth_provider": "google",
             "role": "user",
             "wallet_balance": 0.0,
+            "coins": 0,
             "created_at": now_iso(),
         }
         await db.users.insert_one(dict(user))
+        await grant_signup_coins(user_id)
+        user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail="Your account is blocked. Contact admin.")
     token = create_token(user["id"], user.get("role", "user"))
@@ -971,6 +1062,64 @@ async def create_entry_wallet(body: WalletEntryBody, user=Depends(get_current_us
     return doc
 
 
+class CoinsEntryBody(BaseModel):
+    contest_id: str = Field(min_length=1, max_length=60)
+    team_id: Optional[str] = Field(default=None, max_length=60)
+
+
+@api_router.post("/entries/coins")
+async def create_entry_coins(body: CoinsEntryBody, user=Depends(get_current_user)):
+    """Join a contest with Pitch Coins — the play currency. Auto-approved, no money involved."""
+    rate_limit("join", user["id"])
+    cs = await get_coin_settings()
+    if not cs["enabled"]:
+        raise HTTPException(status_code=400, detail="Pitch Coins are paused right now. Please use your wallet to join.")
+    contest = await get_joinable_contest(body.contest_id, user, coins_mode=True)
+    team = await resolve_entry_team(contest, user, body.team_id)
+    fee = round(float(contest.get("entry_fee") or 0), 2)
+    # Plus members get a coin discount on every entry.
+    discount = 0.0
+    if plus_active(user) and cs["plus_discount_pct"] > 0 and fee > 0:
+        discount = min(round(fee * cs["plus_discount_pct"] / 100.0, 2), fee)
+    payable = round(fee - discount, 2)
+    if payable > 0:
+        await grant_coins(user["id"], -payable, "entry_fee", f"Entry fee · {contest['title']}")
+    entry_id = str(uuid.uuid4())
+    doc = {
+        "id": entry_id,
+        "contest_id": contest["id"],
+        "contest_title": contest["title"],
+        "user_id": user["id"],
+        "user_name": user["name"],
+        "user_mobile": user.get("mobile"),
+        "entry_fee": fee,
+        "utr": None,
+        "screenshot_path": None,
+        "status": "approved",
+        "payment_method": "coins",
+        "contest_kind": contest.get("kind", "classic"),
+        "team_id": team["id"] if team else None,
+        "team_name": team.get("name") if team else None,
+        "decision_note": "Paid with Pitch Coins" + (f" · Plus {cs['plus_discount_pct']}% off" if discount > 0 else ""),
+        "decided_at": now_iso(),
+        "winner_prize": 0.0,
+        "paid_coins": payable,
+        "plus_discount": discount,
+        "created_at": now_iso(),
+    }
+    await db.entries.insert_one(doc)
+    doc.pop("_id", None)
+    paid_note = f"{coins_fmt(payable)} coins" if payable > 0 else "free entry"
+    await push_notification(
+        user["id"], "entry", "Entry confirmed",
+        f"You joined {contest['title']} with {paid_note}. Good luck!",
+        {"contest_id": contest["id"], "entry_id": entry_id, "amount": payable},
+    )
+    doc["external_link"] = contest.get("external_link")
+    doc["coins_balance"] = await coin_balance(user["id"])
+    return doc
+
+
 # ---------- Wallet top-up by UPI transfer (no gateway) ----------
 #
 # The gateway is not always available — a new account, a downtime, or a user who
@@ -1025,6 +1174,134 @@ async def wallet_topup_manual(body: ManualTopupBody, user=Depends(get_current_us
 @api_router.get("/wallet/topups/mine")
 async def my_topup_requests(user=Depends(get_current_user)):
     return await db.topup_requests.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+# ---------- Pitch Coins: user endpoints ----------
+#
+# Coins are the play currency. They can be won, refunded, granted and claimed
+# daily — but they are never money: no top-ups, no withdrawals, no taxes.
+
+@api_router.get("/coins/config")
+async def coins_config(user=Depends(get_current_user)):
+    cs = await get_coin_settings()
+    today = _utc_day()
+    balance = await coin_balance(user["id"])
+    return {
+        "enabled": cs["enabled"],
+        "balance": balance,
+        "balance_display": coins_fmt(balance),
+        "plus_until": user.get("plus_until"),
+        "plus_active": plus_active(user),
+        "daily_bonus": cs["daily_bonus"],
+        "can_claim_daily": cs["enabled"] and cs["daily_bonus"] > 0 and user.get("daily_claimed_on") != today,
+        "signup_bonus": cs["signup_bonus"],
+        "plus_price_coins": cs["plus_price_coins"],
+        "plus_days": cs["plus_days"],
+        "plus_discount_pct": cs["plus_discount_pct"],
+        "billing_mode": cs["billing_mode"],
+        "packs": [p for p in cs["packs"] if p.get("active", True)],
+    }
+
+
+@api_router.get("/coins/ledger")
+async def coins_ledger_mine(user=Depends(get_current_user)):
+    return await db.coins_ledger.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
+
+
+@api_router.post("/coins/daily")
+async def claim_daily_coins(user=Depends(get_current_user)):
+    rate_limit("coins_daily", user["id"])
+    cs = await get_coin_settings()
+    if not cs["enabled"]:
+        raise HTTPException(status_code=400, detail="Pitch Coins are paused right now")
+    if cs["daily_bonus"] <= 0:
+        raise HTTPException(status_code=400, detail="No daily bonus is running right now")
+    today = _utc_day()
+    if user.get("daily_claimed_on") == today:
+        raise HTTPException(status_code=400, detail="Today's coins are already claimed — come back tomorrow")
+    balance = await grant_coins(user["id"], float(cs["daily_bonus"]), "daily_bonus", "Daily login bonus")
+    await db.users.update_one({"id": user["id"]}, {"$set": {"daily_claimed_on": today}})
+    return {"ok": True, "claimed": cs["daily_bonus"], "balance": balance, "balance_display": coins_fmt(balance)}
+
+
+class CoinCheckoutBody(BaseModel):
+    pack_id: str = Field(min_length=1, max_length=60)
+
+
+@api_router.post("/coins/store/checkout")
+async def coins_store_checkout(body: CoinCheckoutBody, user=Depends(get_current_user)):
+    """Buy a pack from the coin store. In 'sandbox' billing the grant is instant and a
+    Play-style charge record is kept so the same flow can flip to real Google Play
+    Billing later. In 'play' mode we refuse until the billing seam is wired."""
+    rate_limit("store", user["id"])
+    cs = await get_coin_settings()
+    if not cs["enabled"]:
+        raise HTTPException(status_code=400, detail="The coin store is paused right now")
+    if cs["billing_mode"] != "sandbox":
+        raise HTTPException(status_code=503, detail="Store purchases are moving to Google Play — check back soon")
+    pack = next((p for p in cs["packs"] if p.get("id") == body.pack_id), None)
+    if not pack or not pack.get("active", True):
+        raise HTTPException(status_code=404, detail="That pack is not available right now")
+    order_id = f"PC-{uuid.uuid4().hex[:12].upper()}"
+    charged = 0
+    kind = pack.get("kind", "coins")
+    if kind == "plus":
+        if plus_active(user):
+            raise HTTPException(status_code=400, detail="You already have PitchPlus — it can't be stacked")
+        charged = int(cs["plus_price_coins"])
+        if charged > 0:
+            await grant_coins(user["id"], -charged, "plus_purchase", "PitchPlus membership")
+        base = user.get("plus_until")
+        try:
+            start = datetime.fromisoformat(base) if base else datetime.utcnow()
+            if start < datetime.utcnow():
+                start = datetime.utcnow()
+        except (ValueError, TypeError):
+            start = datetime.utcnow()
+        until = (start + timedelta(days=int(cs["plus_days"] or 30))).isoformat()
+        await db.users.update_one({"id": user["id"]}, {"$set": {"plus_until": until}})
+    else:
+        coins = int(pack.get("coins") or 0)
+        if coins <= 0:
+            raise HTTPException(status_code=400, detail="That pack carries no coins")
+        await grant_coins(user["id"], float(coins), "store_purchase", f"{pack.get('title') or 'Coin pack'}")
+    charge = {
+        "id": order_id,
+        "user_id": user["id"],
+        "user_name": user.get("name") or "",
+        "pack_id": pack["id"],
+        "kind": kind,
+        "title": pack.get("title") or ("PitchPlus" if kind == "plus" else "Coin pack"),
+        "coins": int(pack.get("coins") or 0) if kind != "plus" else 0,
+        "price_inr": float(pack.get("price_inr") or 0),
+        "amount_coins_charged": charged,
+        "billing_mode": "sandbox",
+        "status": "paid",
+        "purchase_token": f"sandbox-{order_id}",
+        "created_at": now_iso(),
+    }
+    await db.coin_charges.insert_one(charge)
+    charge.pop("_id", None)
+    balance = await coin_balance(user["id"])
+    if kind == "plus":
+        await push_notification(
+            user["id"], "coins", "PitchPlus is live!",
+            f"{coins_fmt(charged)} coins deducted. Plus is active with {cs['plus_discount_pct']}% off every entry.",
+            {"order_id": order_id},
+        )
+    else:
+        await push_notification(
+            user["id"], "coins", "Coins added",
+            f"{coins_fmt(int(pack.get('coins') or 0))} coins landed in your balance. Happy playing!",
+            {"order_id": order_id},
+        )
+    return {"ok": True, "order_id": order_id, "kind": kind, "charged_coins": charged,
+            "balance": balance, "balance_display": coins_fmt(balance), "charge": charge}
+
+
+@api_router.get("/coins/charges/mine")
+async def my_coin_charges(user=Depends(get_current_user)):
+    return await db.coin_charges.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
 
 
 @api_router.get("/admin/topups")
@@ -1143,6 +1420,16 @@ async def declare_winner(entry_id: str, body: DeclareWinnerBody, admin=Depends(r
         {"id": entry_id},
         {"$set": {"status": "won", "winner_prize": body.prize_amount, "won_at": now_iso()}},
     )
+    if entry.get("payment_method") == "coins":
+        # Coins entry → the prize is coins. No money, no tax.
+        prize = round(float(body.prize_amount), 2)
+        await grant_coins(entry["user_id"], prize, "prize", f"Won · {entry.get('contest_title', 'contest')}")
+        await push_notification(
+            entry["user_id"], "win", "You won! 🏆",
+            f"Congratulations! You won {coins_fmt(prize)} coins in {entry.get('contest_title', 'a contest')}. They're in your balance now.",
+            {"contest_id": entry.get("contest_id"), "entry_id": entry_id, "prize": prize},
+        )
+        return {"ok": True}
     # Credit to user wallet
     await db.users.update_one(
         {"id": entry["user_id"]},
@@ -1161,8 +1448,10 @@ async def declare_winner(entry_id: str, body: DeclareWinnerBody, admin=Depends(r
 async def wallet_config(user=Depends(get_current_user)):
     s = await get_payment_settings()
     g = await get_guard_settings()
+    cs = await get_coin_settings()
     return {"admin_upi_id": s["upi_id"], "payee_name": s.get("payee_name", ""), "instructions": s.get("instructions", ""), "qr_path": s.get("qr_path"),
             "manual_upi_enabled": s.get("manual_upi_enabled", True),
+            "coins_enabled": cs["enabled"],
             "min_withdrawal": float(g.get("min_withdrawal") or 0), "max_withdrawal_per_day": float(g.get("max_withdrawal_per_day") or 0)}
 
 
@@ -1376,11 +1665,13 @@ async def admin_create_user(body: AdminUserCreate, admin=Depends(require_admin))
         "password_hash": hash_password(body.password),
         "role": "user",
         "wallet_balance": float(body.wallet_balance),
+        "coins": 0,
         "blocked": False,
         "created_by_admin": True,
         "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
+    await grant_signup_coins(doc["id"])
     doc.pop("_id", None)
     doc.pop("password_hash", None)
     return doc
@@ -1429,6 +1720,128 @@ async def admin_adjust_wallet(user_id: str, body: WalletAdjustBody, admin=Depend
         {"amount": body.amount, "wallet_balance": new_balance},
     )
     return {"ok": True, "wallet_balance": new_balance}
+
+
+# ---------- Pitch Coins: admin endpoints ----------
+
+class CoinGrantBody(BaseModel):
+    user_id: str = Field(min_length=1, max_length=60)
+    delta: int = Field(ge=-1000000, le=1000000)
+    note: str = Field(default="", max_length=200)
+
+
+def _normalize_packs(raw) -> list:
+    """Keep the catalog sane: unique ids, known kinds, non-negative numbers."""
+    packs = []
+    seen = set()
+    for p in (raw or []):
+        if not isinstance(p, dict):
+            continue
+        pid = str(p.get("id") or "").strip()[:60]
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        kind = p.get("kind") if p.get("kind") in ("coins", "plus") else "coins"
+        try:
+            coins = max(0, int(float(p.get("coins") or 0)))
+        except (ValueError, TypeError):
+            coins = 0
+        try:
+            price = max(0.0, float(p.get("price_inr") or 0))
+        except (ValueError, TypeError):
+            price = 0.0
+        packs.append({
+            "id": pid,
+            "kind": kind,
+            "title": str(p.get("title") or "").strip()[:60] or pid,
+            "coins": coins,
+            "price_inr": price,
+            "tag": str(p.get("tag") or "").strip()[:60],
+            "active": bool(p.get("active", True)),
+        })
+    return packs
+
+
+class CoinSettingsBody(BaseModel):
+    enabled: Optional[bool] = None
+    signup_bonus: Optional[int] = Field(default=None, ge=0, le=100000)
+    daily_bonus: Optional[int] = Field(default=None, ge=0, le=100000)
+    plus_discount_pct: Optional[int] = Field(default=None, ge=0, le=90)
+    plus_price_coins: Optional[int] = Field(default=None, ge=0, le=1000000)
+    plus_days: Optional[int] = Field(default=None, ge=1, le=3650)
+    billing_mode: Optional[str] = None
+    packs: Optional[list] = None
+
+
+@api_router.post("/admin/coins/grant")
+async def admin_grant_coins(body: CoinGrantBody, admin=Depends(require_admin)):
+    u = await db.users.find_one({"id": body.user_id, "role": "user"}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.delta == 0:
+        raise HTTPException(status_code=400, detail="Coin amount cannot be zero")
+    balance = await grant_coins(body.user_id, float(body.delta), "admin_grant", body.note or "Adjusted by organiser")
+    credited = body.delta > 0
+    await push_notification(
+        body.user_id, "coins", "Coins added" if credited else "Coins deducted",
+        f"{coins_fmt(abs(body.delta))} coins {'added to' if credited else 'deducted from'} your balance."
+        + (f" {body.note}" if body.note else ""),
+        {"delta": body.delta, "balance": balance},
+    )
+    return {"ok": True, "coins": balance}
+
+
+@api_router.get("/admin/coins")
+async def admin_coins(admin=Depends(require_admin)):
+    cs = await get_coin_settings()
+    pipe = [{"$group": {"_id": None, "circulating": {"$sum": "$coins"}}}]
+    agg = await db.users.aggregate(pipe).to_list(1)
+    circulating = round(float(agg[0]["circulating"]) if agg else 0.0, 2)
+    holders = await db.users.count_documents({"role": "user", "coins": {"$gt": 0}})
+    charges = await db.coin_charges.count_documents({})
+    sold_agg = await db.coins_ledger.aggregate([
+        {"$match": {"reason": "store_purchase"}},
+        {"$group": {"_id": None, "sold": {"$sum": "$delta"}}},
+    ]).to_list(1)
+    fee_agg = await db.coins_ledger.aggregate([
+        {"$match": {"reason": "entry_fee"}},
+        {"$group": {"_id": None, "fees": {"$sum": "$delta"}}},
+    ]).to_list(1)
+    return {
+        "settings": cs,
+        "stats": {
+            "circulating": circulating,
+            "holders": holders,
+            "charges": charges,
+            "coins_sold": round(float(sold_agg[0]["sold"]) if sold_agg else 0.0, 2),
+            "entry_fees_coins": round(-float(fee_agg[0]["fees"]) if fee_agg else 0.0, 2),
+        },
+    }
+
+
+@api_router.put("/admin/coins")
+async def admin_update_coins(body: CoinSettingsBody, admin=Depends(require_admin)):
+    cs = await get_coin_settings()
+    updates = {}
+    for field in ("enabled", "signup_bonus", "daily_bonus", "plus_discount_pct", "plus_price_coins", "plus_days"):
+        val = getattr(body, field)
+        if val is not None:
+            updates[field] = val
+    if body.billing_mode is not None:
+        if body.billing_mode not in ("sandbox", "play"):
+            raise HTTPException(status_code=400, detail="billing_mode must be 'sandbox' or 'play'")
+        updates["billing_mode"] = body.billing_mode
+    if body.packs is not None:
+        updates["packs"] = _normalize_packs(body.packs)
+    if updates:
+        updates["updated_at"] = now_iso()
+        await db.settings.update_one({"key": "coins"}, {"$set": updates}, upsert=True)
+    return {"ok": True, "settings": await get_coin_settings()}
+
+
+@api_router.get("/admin/coins/charges")
+async def admin_coin_charges(admin=Depends(require_admin)):
+    return await db.coin_charges.find({}, {"_id": 0}).sort("created_at", -1).to_list(300)
 
 
 @api_router.get("/admin/stats")
@@ -1880,6 +2293,27 @@ async def admin_settle_contest(contest_id: str, body: SettleBody, admin=Depends(
             continue
         e = await db.entries.find_one({"id": row["entry_id"]})
         if not e or e.get("status") == "won":
+            continue
+        if e.get("payment_method") == "coins":
+            # Coins entry → the prize is coins: no tax, nothing touches the wallet.
+            await db.entries.update_one(
+                {"id": row["entry_id"]},
+                {"$set": {"status": "won", "winner_prize": amount, "prize_gross": amount,
+                          "tax_percent": 0, "tax_amount": 0, "won_at": now_iso(),
+                          "fantasy_rank": row["rank"], "fantasy_points": row["points"]}},
+            )
+            await grant_coins(row["user_id"], amount, "prize",
+                              f"Fantasy prize · rank {row['rank']} · {contest.get('title')}")
+            await push_notification(
+                row["user_id"], "win", f"You ranked #{row['rank']}! 🏆",
+                f"{row['team_name'] or 'Your team'} scored {row['points']} points in {contest.get('title')}. "
+                f"{coins_fmt(amount)} coins credited to your balance.",
+                {"contest_id": contest_id, "entry_id": row["entry_id"], "rank": row["rank"],
+                 "points": row["points"], "prize": amount},
+            )
+            winners.append({"entry_id": row["entry_id"], "rank": row["rank"], "user_name": row["user_name"],
+                            "team_name": row["team_name"], "points": row["points"], "prize": amount,
+                            "prize_gross": amount, "tax_amount": 0, "tax_percent": 0, "paid_in": "coins"})
             continue
         await db.entries.update_one(
             {"id": row["entry_id"]},
@@ -3335,7 +3769,7 @@ async def match_live(match_id: str, user=Depends(get_current_user)):
 # ---------- Fantasy extras: one XI into many contests, auto-pick ----------
 @api_router.post("/fantasy/enter-multi")
 async def fantasy_enter_multi(body: EnterMultiBody, user=Depends(get_current_user)):
-    """Join several fantasy contests with one saved team, paid from the wallet in one tap."""
+    """Join several fantasy contests with one saved team, paid from the wallet or with coins in one tap."""
     if user["role"] == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot join contests")
     team = await db.fantasy_teams.find_one({"id": body.team_id}, {"_id": 0})
@@ -3344,10 +3778,14 @@ async def fantasy_enter_multi(body: EnterMultiBody, user=Depends(get_current_use
     match = await get_match_or_404(team["match_id"])
     if match_locked(match):
         raise HTTPException(status_code=400, detail="Entries for this match are closed")
+    use_coins = (body.pay_with or "wallet") == "coins"
+    cs = await get_coin_settings() if use_coins else None
+    if use_coins and not cs["enabled"]:
+        raise HTTPException(status_code=400, detail="Pitch Coins are paused right now. Please use your wallet to join.")
 
     planned = []
     for cid in body.contest_ids:
-        contest = await get_joinable_contest(cid, user)
+        contest = await get_joinable_contest(cid, user, coins_mode=use_coins)
         if contest.get("kind") != "fantasy":
             raise HTTPException(status_code=400, detail=f"{contest.get('title')} is not a fantasy contest")
         if contest.get("match_id") != team["match_id"]:
@@ -3355,25 +3793,39 @@ async def fantasy_enter_multi(body: EnterMultiBody, user=Depends(get_current_use
         await resolve_entry_team(contest, user, team["id"])
         fee = float(contest.get("entry_fee") or 0)
         if fee <= 0:
-            raise HTTPException(status_code=400, detail=f"{contest.get('title')} cannot be paid from the wallet")
-        planned.append((contest, fee))
+            raise HTTPException(status_code=400, detail=f"{contest.get('title')} has no entry fee to pay")
+        discount = 0.0
+        if use_coins and plus_active(user) and cs["plus_discount_pct"] > 0:
+            discount = min(round(fee * cs["plus_discount_pct"] / 100.0, 2), fee)
+        payable = round(fee - discount, 2)
+        planned.append((contest, fee, discount, payable))
 
-    total = round(sum(fee for _, fee in planned), 2)
-    balance = float(user.get("wallet_balance") or 0)
-    if total > balance:
-        raise HTTPException(status_code=400, detail=f"These {len(planned)} contests need {inr(total)}. "
-                                                   f"Your wallet has {inr(balance)} — top up or drop one.")
+    total = round(sum(pay for _, _, _, pay in planned), 2)
+    if use_coins:
+        balance = await coin_balance(user["id"])
+        if total > balance + 0.001:
+            raise HTTPException(status_code=400, detail=f"These {len(planned)} contests need {coins_fmt(total)} coins. "
+                                                        f"Your balance is {coins_fmt(balance)} — top up in the store or drop one.")
+    else:
+        balance = float(user.get("wallet_balance") or 0)
+        if total > balance:
+            raise HTTPException(status_code=400, detail=f"These {len(planned)} contests need {inr(total)}. "
+                                                       f"Your wallet has {inr(balance)} — top up or drop one.")
 
     made = []
-    for contest, fee in planned:
-        res = await db.users.update_one(
-            {"id": user["id"], "wallet_balance": {"$gte": fee}},
-            {"$inc": {"wallet_balance": -fee}},
-        )
-        if res.matched_count == 0:
-            break  # wallet ran dry mid-batch; keep what we already joined
+    for contest, fee, discount, payable in planned:
+        if use_coins:
+            if payable > 0:
+                await grant_coins(user["id"], -payable, "entry_fee", f"Entry fee · {contest['title']}")
+        else:
+            res = await db.users.update_one(
+                {"id": user["id"], "wallet_balance": {"$gte": fee}},
+                {"$inc": {"wallet_balance": -fee}},
+            )
+            if res.matched_count == 0:
+                break  # wallet ran dry mid-batch; keep what we already joined
         entry_id = str(uuid.uuid4())
-        await db.entries.insert_one({
+        entry_doc = {
             "id": entry_id,
             "contest_id": contest["id"],
             "contest_title": contest["title"],
@@ -3385,7 +3837,7 @@ async def fantasy_enter_multi(body: EnterMultiBody, user=Depends(get_current_use
             "utr": None,
             "screenshot_path": None,
             "status": "approved",
-            "payment_method": "wallet",
+            "payment_method": "coins" if use_coins else "wallet",
             "contest_kind": "fantasy",
             "team_id": team["id"],
             "team_name": team.get("name"),
@@ -3393,24 +3845,34 @@ async def fantasy_enter_multi(body: EnterMultiBody, user=Depends(get_current_use
             "decided_at": now_iso(),
             "winner_prize": 0.0,
             "created_at": now_iso(),
-        })
-        await db.wallet_logs.insert_one({
-            "id": str(uuid.uuid4()), "user_id": user["id"], "amount": -fee,
-            "note": f"Entry fee · {contest['title']}", "by": "system", "created_at": now_iso(),
-        })
+        }
+        if use_coins:
+            entry_doc["paid_coins"] = payable
+            entry_doc["plus_discount"] = discount
+        await db.entries.insert_one(entry_doc)
+        if not use_coins:
+            await db.wallet_logs.insert_one({
+                "id": str(uuid.uuid4()), "user_id": user["id"], "amount": -fee,
+                "note": f"Entry fee · {contest['title']}", "by": "system", "created_at": now_iso(),
+            })
         made.append({"entry_id": entry_id, "contest_id": contest["id"], "title": contest["title"], "fee": fee})
 
     if not made:
-        raise HTTPException(status_code=400, detail="Insufficient wallet balance. Please top up to continue.")
+        raise HTTPException(status_code=400, detail="Insufficient balance. Please top up to continue.")
+    spent_note = f"{coins_fmt(total)} coins" if use_coins else f"{inr(total)}"
     await push_notification(
         user["id"], "entry", f"Joined {len(made)} contests",
         f"{team.get('name') or 'Your team'} is in {', '.join(m['title'] for m in made[:3])}"
-        f"{'…' if len(made) > 3 else ''}. {inr(round(sum(m['fee'] for m in made), 2))} deducted from your wallet.",
+        f"{'…' if len(made) > 3 else ''}. {spent_note} deducted.",
         {"team_id": team["id"], "contest_ids": [m["contest_id"] for m in made]},
     )
-    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "wallet_balance": 1})
-    return {"ok": True, "joined": made, "total_spent": round(sum(m["fee"] for m in made), 2),
-            "wallet_balance": round(float(fresh.get("wallet_balance") or 0), 2)}
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0, "wallet_balance": 1, "coins": 1})
+    out = {"ok": True, "joined": made, "total_spent": round(sum(m["fee"] for m in made), 2),
+           "wallet_balance": round(float(fresh.get("wallet_balance") or 0), 2)}
+    if use_coins:
+        out["paid_with"] = "coins"
+        out["coins_balance"] = await coin_balance(user["id"])
+    return out
 
 
 def _xi_credits(sel: list) -> float:
@@ -3609,8 +4071,8 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 7, "version_name": "1.6.0", "apk_url": "",
-                        "notes": "UPI-only payments: Razorpay removed, manual UPI everywhere",
+APP_VERSION_DEFAULTS = {"version_code": 8, "version_name": "1.7.0", "apk_url": "",
+                        "notes": "Pitch Coins: join contests with coins, coin store, Plus perks",
                         "force_update": False}
 
 
@@ -3867,16 +4329,32 @@ async def enforce_entry_caps(contest: dict, user: dict) -> None:
 
 
 async def refund_entries(entries: list, reason: str) -> dict:
-    """Credit entry fees back to wallets for the given entries."""
+    """Credit entry fees back for the given entries — coins entries get coins, money entries get wallet."""
     refunded, total = 0, 0.0
     for e in entries:
         if e.get("status") == "refunded":
+            continue
+        title = e.get("contest_title") or "contest"
+        if e.get("payment_method") == "coins":
+            amount = round(float(e.get("paid_coins") or e.get("entry_fee") or 0), 2)
+            if amount > 0:
+                await grant_coins(e["user_id"], amount, "refund", f"Refund · {title} · {reason}")
+            await db.entries.update_one({"id": e["id"]}, {"$set": {
+                "status": "refunded", "refunded_at": now_iso(), "refund_reason": reason, "decision_note": reason,
+            }})
+            await push_notification(
+                e["user_id"], "refund", "Coins refunded",
+                f"{coins_fmt(amount)} coins were returned to your balance — {reason}.",
+                {"contest_id": e.get("contest_id"), "entry_id": e["id"], "amount": amount},
+            )
+            refunded += 1
+            total += amount
             continue
         amount = float(e.get("entry_fee") or 0)
         await db.users.update_one({"id": e["user_id"]}, {"$inc": {"wallet_balance": amount}})
         await db.wallet_logs.insert_one({
             "id": str(uuid.uuid4()), "user_id": e["user_id"], "amount": amount,
-            "note": f"Refund · {e.get('contest_title') or 'contest'} · {reason}", "by": "system", "created_at": now_iso(),
+            "note": f"Refund · {title} · {reason}", "by": "system", "created_at": now_iso(),
         })
         await db.entries.update_one({"id": e["id"]}, {"$set": {
             "status": "refunded", "refunded_at": now_iso(), "refund_reason": reason, "decision_note": reason,
@@ -4109,14 +4587,20 @@ async def spend_today(user_id: str) -> float:
     return total
 
 
-async def enforce_play_safety(user: dict, fee: float = 0.0) -> None:
-    """Blocks new real-money play for an excluded user or one over their daily spend cap."""
+async def enforce_play_safety(user: dict, fee: float = 0.0, coins: bool = False) -> None:
+    """Blocks new play for an excluded user or one over their daily spend cap.
+
+    With coins=True the fee is Pitch Coins, not rupees, so the rupee spend cap
+    does not apply — but a self-exclusion (a chosen break) is always honoured.
+    """
     if user.get("role") == "admin":
         return
     if _is_excluded(user):
         raise HTTPException(status_code=400,
                             detail=f"You chose to take a break until {_exclusion_until(user)[:10]}. "
                                    "Entries stay closed for you until then.")
+    if coins:
+        return
     s = await get_safety_settings()
     cap = float(s.get("max_daily_spend") or 0)
     if cap:
@@ -5235,11 +5719,12 @@ async def otp_signup(body: OtpSignupBody, request: Request):
     doc = {
         "id": user_id, "name": body.name.strip()[:60], "mobile": mobile,
         "password_hash": hash_password(body.password), "role": "user",
-        "wallet_balance": 0.0, "bonus_balance": 0.0, "created_at": now_iso(),
+        "wallet_balance": 0.0, "bonus_balance": 0.0, "coins": 0, "created_at": now_iso(),
     }
     await db.users.insert_one(doc)
     await ensure_referral_code(user_id)
     await attribute_referral(user_id, body.ref)
+    await grant_signup_coins(user_id)
     doc.pop("_id", None)
     return {"token": create_token(user_id, "user"), "user": sanitize_user(doc, hide_mobile=False)}
 

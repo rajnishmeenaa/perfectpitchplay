@@ -61,7 +61,7 @@ const StatusChip = ({ status }) => {
   return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest ${map[status] || "bg-zinc-100 text-zinc-600"}`} data-testid={`match-status-${status}`}>{status === "upcoming" ? "upcoming" : status}</span>;
 };
 
-export default function FantasyApp({ config, walletBalance = 0, bonusBalance = 0, focusMatchId, entries = [], onJoinFantasy, onMoneyChanged }) {
+export default function FantasyApp({ config, walletBalance = 0, bonusBalance = 0, coinCfg = null, focusMatchId, entries = [], onJoinFantasy, onMoneyChanged }) {
   // Bonus cash pays entry fees too, so affordability uses the combined amount.
   const spendable = Number(walletBalance || 0) + Number(bonusBalance || 0);
   const [matches, setMatches] = useState([]);
@@ -159,6 +159,7 @@ export default function FantasyApp({ config, walletBalance = 0, bonusBalance = 0
           reload={() => loadDetail(matchId)}
           config={config}
           walletBalance={spendable}
+          coinCfg={coinCfg}
           onJoinFantasy={onJoinFantasy}
           onMoneyChanged={onMoneyChanged}
         />
@@ -208,7 +209,7 @@ function MatchCard({ match, active, onOpen }) {
   );
 }
 
-function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy, onMoneyChanged }) {
+function MatchWorkspace({ detail, reload, config, walletBalance, coinCfg = null, onJoinFantasy, onMoneyChanged }) {
   const { match, players, contests, my_teams } = detail;
   // Draft lives here so switching sub-tabs never throws away an in-progress XI.
   const [draft, setDraft] = useState({ ids: [], captain: "", vice: "", name: "", editingId: null });
@@ -281,6 +282,7 @@ function MatchWorkspace({ detail, reload, config, walletBalance, onJoinFantasy, 
             match={match}
             config={config}
             walletBalance={walletBalance}
+            coinCfg={coinCfg}
             onJoinFantasy={onJoinFantasy}
             onMoneyChanged={onMoneyChanged}
             onReload={reload}
@@ -1200,22 +1202,34 @@ function CompareDialog({ pair, teams, onClose }) {
   );
 }
 
-function FantasyContests({ contests, myTeams, match, config, walletBalance, onJoinFantasy, onMoneyChanged, onReload }) {
+function FantasyContests({ contests, myTeams, match, config, walletBalance, coinCfg = null, onJoinFantasy, onMoneyChanged, onReload }) {
   const [picked, setPicked] = useState({});
   const [boardFor, setBoardFor] = useState(null);
   const [multiTeam, setMultiTeam] = useState("");
   const [multiSel, setMultiSel] = useState([]);
   const [busyMulti, setBusyMulti] = useState(false);
+  const [payWith, setPayWith] = useState("wallet");
   const openOnes = contests.filter((c) => c.status === "open" && !match.locked && Number(c.entry_fee) > 0);
   const multiTeamId = multiTeam || (myTeams[0] && myTeams[0].id) || "";
   const multiCost = openOnes.filter((c) => multiSel.includes(c.id)).reduce((a, c) => a + Number(c.entry_fee || 0), 0);
+
+  // Coin rail mirrors the server's Plus discount so the button shows what will charge.
+  const coinsOn = !!coinCfg?.enabled;
+  const coinBal = Number(coinCfg?.balance || 0);
+  const plusPct = coinsOn && coinCfg?.plus_active ? Number(coinCfg.plus_discount_pct || 0) : 0;
+  const coinCost = plusPct > 0 ? Math.round(multiCost * (100 - plusPct)) / 100 : multiCost;
+  const useCoins = payWith === "coins" && coinsOn;
+  const activeCost = useCoins ? coinCost : multiCost;
+  const activeBalance = useCoins ? coinBal : walletBalance;
+  const shortBy = Math.max(0, Math.ceil((activeCost - activeBalance) * 100) / 100);
 
   const joinMany = async () => {
     if (!multiTeamId || !multiSel.length) return;
     setBusyMulti(true);
     try {
-      const { data } = await api.post("/fantasy/enter-multi", { team_id: multiTeamId, contest_ids: multiSel });
-      toast.success(`Joined ${data.joined.length} contest${data.joined.length === 1 ? "" : "s"} · wallet ${money(data.wallet_balance)} left`);
+      const { data } = await api.post("/fantasy/enter-multi", { team_id: multiTeamId, contest_ids: multiSel, pay_with: useCoins ? "coins" : "wallet" });
+      if (useCoins) toast.success(`Joined ${data.joined.length} contest${data.joined.length === 1 ? "" : "s"} with coins · ${Number(data.coins_balance || 0).toLocaleString("en-IN")} left`);
+      else toast.success(`Joined ${data.joined.length} contest${data.joined.length === 1 ? "" : "s"} · wallet ${money(data.wallet_balance)} left`);
       setMultiSel([]);
       onReload();
       if (onMoneyChanged) onMoneyChanged();
@@ -1242,8 +1256,24 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
           <div className="flex flex-wrap items-center gap-2">
             <Wallet size={16} weight="fill" className="text-emerald-600" />
             <span className="text-sm font-extrabold text-zinc-900">Play one XI in several contests</span>
-            <span className="text-[11px] text-zinc-500">paid from your available balance ({money(walletBalance)})</span>
+            <span className="text-[11px] text-zinc-500">
+              {useCoins ? `paid with Pitch Coins (${Number(coinBal).toLocaleString("en-IN")} available)` : `paid from your available balance (${money(walletBalance)})`}
+            </span>
           </div>
+          {coinsOn && (
+            <div className="flex items-center gap-2 mt-2" data-testid="multi-pay-toggle">
+              <button type="button" onClick={() => setPayWith("wallet")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${payWith === "wallet" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
+                data-testid="pay-wallet-toggle">
+                Wallet {money(walletBalance)}
+              </button>
+              <button type="button" onClick={() => setPayWith("coins")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${payWith === "coins" ? "bg-amber-500 text-white border-amber-500" : "bg-white text-zinc-600 border-zinc-200 hover:border-amber-400"}`}
+                data-testid="pay-coins-toggle">
+                Coins {Number(coinBal).toLocaleString("en-IN")}{plusPct > 0 ? ` · −${plusPct}%` : ""}
+              </button>
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 mt-3">
             <select
               value={multiTeamId}
@@ -1265,14 +1295,16 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, onJo
                 </button>
               );
             })}
-            <Button size="sm" disabled={!multiTeamId || !multiSel.length || busyMulti || multiCost > walletBalance} onClick={joinMany}
+            <Button size="sm" disabled={!multiTeamId || !multiSel.length || busyMulti || activeCost > activeBalance} onClick={joinMany}
               className="ml-auto rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold active:scale-95" data-testid="multi-join-btn">
-              {busyMulti ? "Joining…" : `Join ${multiSel.length} · ${money(multiCost)}`}
+              {busyMulti ? "Joining…" : useCoins ? `Join ${multiSel.length} · ${Number(activeCost).toLocaleString("en-IN")} coins` : `Join ${multiSel.length} · ${money(multiCost)}`}
             </Button>
           </div>
-          {multiCost > walletBalance && (
+          {shortBy > 0 && (
             <p className="text-[11px] text-amber-700 mt-2" data-testid="multi-wallet-short">
-              Needs {money(multiCost)} — top up your wallet or pick fewer contests.
+              {useCoins
+                ? `Needs ${Number(shortBy).toLocaleString("en-IN")} more coins — grab a pack in the store or pick fewer contests.`
+                : `Needs ${money(shortBy)} — top up your wallet or pick fewer contests.`}
             </p>
           )}
         </div>

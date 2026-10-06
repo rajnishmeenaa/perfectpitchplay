@@ -18,6 +18,7 @@ import FantasyApp from "./FantasyApp";
 import { OnboardingTour, CountUp, hasSeenOnboarding, markOnboardingSeen } from "../components/onboarding";
 import { ReferralCard, BadgeShelf, SeasonLadder } from "../components/growth";
 import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
+import { CoinStore } from "../components/coinStore";
 import { BottomNav } from "../components/bottomNav";
 import { MatchCarousel } from "../components/matchCarousel";
 import { SportStrip, ContestLobby, TurfCard, TurfMark, SPORTS } from "../components/turf";
@@ -62,6 +63,7 @@ const SECTION_TITLES = {
   entries: "My contests",
   wallet: "Wallet",
   fantasy: "Fantasy",
+  store: "Pitch Coin Store",
 };
 
 function MobileGate({ name, onSaved, setMobile, onLogout }) {
@@ -165,10 +167,11 @@ export default function UserApp() {
   const [matchFilter, setMatchFilter] = useState(null);
   const [sport, setSport] = useState("cricket");
   const [topups, setTopups] = useState([]);
+  const [coinCfg, setCoinCfg] = useState(null);
 
   const loadAll = async () => {
     try {
-      const [c, e, w, cfg, me, h, win, lg, st, sf, ms, tu] = await Promise.all([
+      const [c, e, w, cfg, me, h, win, lg, st, sf, ms, tu, cc] = await Promise.all([
         api.get("/contests"),
         api.get("/entries/mine"),
         api.get("/withdrawals/mine"),
@@ -182,6 +185,7 @@ export default function UserApp() {
         // Newer endpoints: an older backend must not take the whole lobby down.
         api.get("/matches").catch(() => ({ data: [] })),
         api.get("/wallet/topups/mine").catch(() => ({ data: [] })),
+        api.get("/coins/config").catch(() => ({ data: null })),
       ]);
       setContests(c.data);
       setEntries(e.data);
@@ -195,6 +199,7 @@ export default function UserApp() {
       setSafety(sf.data);
       setMatches(ms.data);
       setTopups(tu.data || []);
+      setCoinCfg(cc.data || null);
       setNotifyToken((t) => t + 1);
     } catch (err) {
       toast.error("Failed to load data");
@@ -261,6 +266,19 @@ export default function UserApp() {
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            {coinCfg?.enabled && (
+              <button
+                type="button"
+                onClick={() => goTo("store")}
+                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full hover:bg-amber-100 active:scale-[0.98] transition-all"
+                data-testid="coin-pill"
+                aria-label="Open the Pitch Coin store"
+              >
+                <Coins size={18} weight="duotone" className="text-amber-500" />
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Coins</span>
+                <CountUp value={coinCfg.balance} fromZero prefix="" className="font-heading font-extrabold text-amber-900" />
+              </button>
+            )}
             <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full" data-testid="wallet-pill">
               <Wallet size={18} weight="duotone" className="text-emerald-700" />
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Wallet</span>
@@ -279,6 +297,7 @@ export default function UserApp() {
         user={user}
         stats={stats}
         entries={entries}
+        coins={coinCfg}
         onGo={goTo}
         onOpenTerms={() => setTermsOpen(true)}
         onLogout={doLogout}
@@ -394,6 +413,7 @@ export default function UserApp() {
               config={config}
               walletBalance={user?.wallet_balance || 0}
               bonusBalance={user?.bonus_balance || 0}
+              coinCfg={coinCfg}
               focusMatchId={focusMatch}
               entries={entries}
               onJoinFantasy={(contest, team) => { setJoinTeam(team || null); setJoinContest(contest); }}
@@ -413,7 +433,7 @@ export default function UserApp() {
                         <div className="font-heading font-bold text-zinc-950">{e.contest_title}</div>
                         <StatusBadge status={e.status} />
                       </div>
-                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {money(e.entry_fee)} · {e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : `UTR: ${e.utr || "—"}`}</div>
+                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {e.payment_method === "coins" ? <span className="text-amber-600 font-semibold" data-testid={`paid-coins-${e.id}`}>{Number(e.paid_coins || e.entry_fee).toLocaleString("en-IN")} coins</span> : money(e.entry_fee)} · {e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : e.payment_method === "coins" ? <span className="text-amber-700 font-semibold" data-testid={`paid-coins-label-${e.id}`}>Paid with Pitch Coins</span> : `UTR: ${e.utr || "—"}`}</div>
                       {e.team_name && (
                         <div className="text-xs text-zinc-500 mt-1" data-testid={`entry-team-${e.id}`}>
                           <Flag size={12} weight="fill" className="inline mr-1 text-emerald-600" />Team {e.team_name}
@@ -536,6 +556,10 @@ export default function UserApp() {
             </div>
           </TabsContent>
 
+          <TabsContent value="store" className="mt-6">
+            <CoinStore coinCfg={coinCfg} onReload={loadAll} />
+          </TabsContent>
+
           <TabsContent value="safety" className="mt-6">
             {safety ? (
               <PlaySafely safety={safety} reload={loadAll} onOpenWallet={() => setTab("wallet")} />
@@ -556,7 +580,7 @@ export default function UserApp() {
         onMore={() => setMoreOpen(true)}
       />
 
-      <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} bonusBalance={user?.bonus_balance || 0} onTopUp={() => setTopUpOpen(true)} />
+      <JoinDialog contest={joinContest} team={joinTeam} onClose={() => { setJoinContest(null); setJoinTeam(null); }} config={config} onDone={loadAll} onPaid={setJustJoined} walletBalance={user?.wallet_balance || 0} bonusBalance={user?.bonus_balance || 0} onTopUp={() => setTopUpOpen(true)} coinCfg={coinCfg} onGoStore={() => goTo("store")} />
       <WithdrawDialog open={wdOpen} onClose={() => setWdOpen(false)} balance={user?.wallet_balance || 0} onDone={loadAll} config={config} />
       <TopUpDialog open={topUpOpen} onClose={() => setTopUpOpen(false)} onDone={loadAll} config={config} />
       {legal && (mustAccept || termsOpen) && (
@@ -771,11 +795,12 @@ function ContestCard({ contest, onJoin, onFantasy }) {
   );
 }
 
-function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBalance = 0, bonusBalance = 0, onTopUp }) {
+function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBalance = 0, bonusBalance = 0, onTopUp, coinCfg = null, onGoStore }) {
   const [utr, setUtr] = useState("");
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
   const [walletPaying, setWalletPaying] = useState(false);
+  const [coinPaying, setCoinPaying] = useState(false);
 
   const manualOn = config.manual_upi_enabled !== false;
   const canTopUp = !!config.manual_upi_enabled && !!config.admin_upi_id;
@@ -801,8 +826,31 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
   const spendable = Number(walletBalance || 0) + Number(bonusBalance || 0);
   const canWallet = spendable >= fee && fee > 0;
 
+  // Coin rail: Plus members get the server-side discount too, mirrored here so
+  // the button reads the same number the backend will charge.
+  const coinsOn = !!coinCfg?.enabled;
+  const coinBal = Number(coinCfg?.balance || 0);
+  const plusPct = coinsOn && coinCfg?.plus_active ? Number(coinCfg.plus_discount_pct || 0) : 0;
+  const coinFee = plusPct > 0 ? Math.max(0, Math.round(fee * (100 - plusPct)) / 100) : fee;
+  const canCoins = coinsOn && coinBal >= coinFee;
+
   const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "Admin")}&am=${contest.entry_fee}&cu=INR&tn=${encodeURIComponent(contest.title)}`;
   const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
+
+  const payWithCoins = async () => {
+    setCoinPaying(true);
+    try {
+      const { data } = await api.post("/entries/coins", { contest_id: contest.id, team_id: team?.id || null });
+      toast.success("Paid with Pitch Coins — you're in!");
+      onClose();
+      onPaid?.(data);
+      onDone();
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Coin payment failed");
+    } finally {
+      setCoinPaying(false);
+    }
+  };
 
   const payFromWallet = async () => {
     setWalletPaying(true);
@@ -846,7 +894,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
           <DialogTitle className="font-heading text-2xl font-extrabold tracking-tight">Join {contest.title}</DialogTitle>
           <DialogDescription>
             Entry fee <span className="font-bold text-emerald-700 tabular">{money(contest.entry_fee)}</span>.
-            Pay to the admin UPI below, then upload the payment screenshot.
+            {coinsOn ? " Pay with Pitch Coins instantly, or use your wallet / UPI below." : " Pay to the admin UPI below, then upload the payment screenshot."}
           </DialogDescription>
         </DialogHeader>
 
@@ -857,6 +905,34 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
               <div className="font-heading font-extrabold text-emerald-900 truncate" data-testid="joining-team-name">{team.name}</div>
             </div>
             <div className="text-xs text-emerald-800 tabular shrink-0">{team.credits_used} credits</div>
+          </div>
+        )}
+
+        {coinsOn && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between gap-3" data-testid="coin-pay-box">
+            <div className="min-w-0">
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">Pitch Coins</div>
+              <div className="font-heading text-xl font-extrabold text-amber-900 tabular" data-testid="coin-pay-balance">{Number(coinBal).toLocaleString("en-IN")} coins</div>
+              {plusPct > 0 && (
+                <div className="text-[11px] font-bold text-turf mt-0.5" data-testid="coin-pay-plus">PitchPlus · {plusPct}% off every entry</div>
+              )}
+              {!canCoins && (
+                <div className="text-xs text-red-700 mt-0.5" data-testid="coin-insufficient">
+                  Need {Math.max(0, Math.ceil(coinFee - coinBal)).toLocaleString("en-IN")} more coins for this entry
+                </div>
+              )}
+            </div>
+            {canCoins ? (
+              <Button disabled={coinPaying} onClick={payWithCoins} className="shrink-0 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-full active:scale-95" data-testid="pay-with-coins-btn">
+                <Coins size={16} weight="fill" className="mr-1" /> {coinPaying ? "Paying..." : coinFee > 0 ? `Pay ${coinFee.toLocaleString("en-IN")}` : "Join free"}
+              </Button>
+            ) : (
+              onGoStore && (
+                <Button variant="outline" onClick={() => { onClose(); onGoStore?.(); }} className="shrink-0 border-amber-300 text-amber-800 hover:bg-amber-100 font-bold rounded-full" data-testid="coin-store-cta">
+                  <PlusCircle size={16} weight="bold" className="mr-1" /> Get coins
+                </Button>
+              )
+            )}
           </div>
         )}
 

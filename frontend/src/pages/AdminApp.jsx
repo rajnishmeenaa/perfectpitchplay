@@ -8,16 +8,18 @@ import { Label } from "../components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 import { toast } from "sonner";
-import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Flag, ShieldCheck, Scroll, FirstAid } from "@phosphor-icons/react";
+import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Flag, ShieldCheck, Scroll, FirstAid, Coins } from "@phosphor-icons/react";
 import { Switch } from "../components/ui/switch";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import AdminFantasy from "./AdminFantasy";
+import AdminCoins from "./AdminCoins";
 import AdminGuardrails from "./AdminGuardrails";
 import AdminOps from "./AdminOps";
 import AdminSafety from "./AdminSafety";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
+const coinsFmt = (n) => Number(n || 0).toLocaleString("en-IN");
 const toLocalInput = (iso) => { const d = new Date(iso); const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 
 const StatusBadge = ({ status }) => {
@@ -47,6 +49,7 @@ const sections = [
   { key: "withdrawals", label: "Withdrawals", icon: CurrencyInr },
   { key: "users", label: "Users", icon: Users },
   { key: "payment", label: "Payment settings", icon: Gear },
+  { key: "coins", label: "Coins & store", icon: Coins },
   { key: "guardrails", label: "Guardrails & legal", icon: ShieldCheck },
   { key: "safety", label: "Play safety & support", icon: FirstAid },
   { key: "ops", label: "App & audit", icon: Scroll },
@@ -101,6 +104,7 @@ export default function AdminApp() {
         {active === "withdrawals" && <WithdrawalsPanel />}
         {active === "users" && <UsersPanel />}
         {active === "payment" && <PaymentSettingsPanel />}
+        {active === "coins" && <AdminCoins />}
         {active === "guardrails" && <AdminGuardrails />}
         {active === "safety" && <AdminSafety />}
         {active === "ops" && <AdminOps />}
@@ -403,8 +407,8 @@ function EntriesPanel() {
                 </TableCell>
                 <TableCell><div className="font-semibold text-zinc-800">{e.contest_title}</div></TableCell>
                 <TableCell className="tabular">
-                  <div className="font-bold">{money(e.entry_fee)}</div>
-                  <div className="text-xs text-zinc-500">{e.payment_method === "wallet" ? "Paid from wallet" : <>UTR: {e.utr || "—"}</>}</div>
+                  <div className="font-bold">{e.payment_method === "coins" ? <span className="text-amber-600">{coinsFmt(e.paid_coins || e.entry_fee)} coins</span> : money(e.entry_fee)}</div>
+                  <div className="text-xs text-zinc-500">{e.payment_method === "wallet" ? "Paid from wallet" : e.payment_method === "coins" ? `Paid with Pitch Coins${e.plus_discount ? ` · Plus −${money(e.plus_discount)}` : ""}` : <>UTR: {e.utr || "—"}</>}</div>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={e.status} />

@@ -10,7 +10,7 @@ import {
  * Rows carry their live numbers so the menu is readable at a glance, and every
  * row lands on a real screen — nothing here is a placeholder.
  */
-export function MoreMenu({ open, onClose, user, stats, entries, onGo, onOpenTerms, onLogout, version }) {
+export function MoreMenu({ open, onClose, user, stats, entries, coins, onGo, onOpenTerms, onLogout, version }) {
   const [shown, setShown] = useState(open);
 
   // Keep the panel mounted through the slide-out so the transition can finish.
@@ -74,6 +74,8 @@ export function MoreMenu({ open, onClose, user, stats, entries, onGo, onOpenTerm
               value={active || null} onClick={() => go("fantasy")} testid="more-matches" />
             <MenuRow icon={Ticket} label="Bonus & Coupons" hint="Non-withdrawable entry credit"
               value={bonus ? `₹${Number(bonus).toLocaleString("en-IN")}` : null} onClick={() => go("wallet", "bonus")} testid="more-vouchers" />
+            <MenuRow icon={Coins} label="Pitch Coins" hint="Balance, store and history"
+              value={coins ? `${Number(coins.balance || 0).toLocaleString("en-IN")}` : null} onClick={() => go("store")} testid="more-coins" />
           </MenuGroup>
 
           <MenuGroup>
