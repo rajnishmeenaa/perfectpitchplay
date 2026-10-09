@@ -28,7 +28,9 @@ body {
 
 .font-heading { font-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.01em; }
 .font-body { font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif; }
-.font-display { font-family: 'Barlow Condensed', Impact, ui-sans-serif, sans-serif; }
+/* Unlayered on purpose: this must beat the generated Tailwind utility of the
+   same name, and it is what the wordmark and big prize numerals actually use. */
+.font-display { font-family: 'Archivo', 'Barlow Condensed', Impact, ui-sans-serif, sans-serif; letter-spacing: -0.01em; }
 
 .tabular { font-variant-numeric: tabular-nums; }
 
