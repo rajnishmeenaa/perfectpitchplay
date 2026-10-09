@@ -202,7 +202,7 @@ export default function AdminOps() {
             </div>
             <div className="lg:col-span-2">
               <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Download link users tap</Label>
-              <Input value={rel.apk_url} onChange={(e) => setRel({ ...rel, apk_url: e.target.value })} placeholder="https://…/PitchPlay.apk" className="mt-1.5" data-testid="ops-apk-url" />
+              <Input value={rel.apk_url} onChange={(e) => setRel({ ...rel, apk_url: e.target.value })} placeholder="https://…/Sapna11.apk" className="mt-1.5" data-testid="ops-apk-url" />
             </div>
             <div className="sm:col-span-2 lg:col-span-4">
               <Label className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">What is new</Label>
@@ -404,13 +404,13 @@ export default function AdminOps() {
               {contests.map((c) => <option key={c.id} value={c.id}>{c.title}</option>)}
             </select>
           </div>
-          <Button variant="outline" disabled={busy} onClick={() => download(`/admin/export/entries.csv${contestId ? `?contest_id=${contestId}` : ""}`, "pitchplay-entries.csv")} className="rounded-md font-bold" data-testid="export-entries-btn">
+          <Button variant="outline" disabled={busy} onClick={() => download(`/admin/export/entries.csv${contestId ? `?contest_id=${contestId}` : ""}`, "sapna11-entries.csv")} className="rounded-md font-bold" data-testid="export-entries-btn">
             <DownloadSimple size={15} weight="bold" className="mr-1.5" /> Entries CSV
           </Button>
-          <Button variant="outline" disabled={busy} onClick={() => download("/admin/export/payouts.csv", "pitchplay-payouts.csv")} className="rounded-md font-bold" data-testid="export-payouts-btn">
+          <Button variant="outline" disabled={busy} onClick={() => download("/admin/export/payouts.csv", "sapna11-payouts.csv")} className="rounded-md font-bold" data-testid="export-payouts-btn">
             <DownloadSimple size={15} weight="bold" className="mr-1.5" /> Payouts CSV
           </Button>
-          <Button variant="outline" disabled={busy} onClick={() => download(`/admin/export/entries.csv?status=refunded${contestId ? `&contest_id=${contestId}` : ""}`, "pitchplay-refunds.csv")} className="rounded-md font-bold" data-testid="export-refunds-btn">
+          <Button variant="outline" disabled={busy} onClick={() => download(`/admin/export/entries.csv?status=refunded${contestId ? `&contest_id=${contestId}` : ""}`, "sapna11-refunds.csv")} className="rounded-md font-bold" data-testid="export-refunds-btn">
             <DownloadSimple size={15} weight="bold" className="mr-1.5" /> Refunds CSV
           </Button>
         </div>

@@ -1,10 +1,11 @@
 /**
- * Turf brand mark — vector, not a raster logo.
+ * Sapna11 brand mark — vector, not a raster logo.
  *
- * Drawing the mark from the same tokens as the rest of the system means it
- * re-tints with the brand, stays sharp on any display density, and needs no
- * image assets in the Android / iOS shells. The identical geometry is exported
- * as public/brand/turf-mark.svg for the favicon and native app icons.
+ * The geometry mirrors the launcher icon shipped in the Android shell (public/
+ * brand/appicon-*.png): a brand-red tile, a heavy white "S" carrying a cricket
+ * ball seam, and a translucent "11" sitting behind it. Drawing it from the same
+ * tokens as the rest of the system keeps it sharp at any density and lets it
+ * re-tint with the palette; the PNG icons exist only where a raster is required.
  */
 import { TURF } from "./tokens";
 
@@ -15,37 +16,52 @@ export function TurfMark({ size = 34, rounded = 28, className = "", testid = "tu
       width={size}
       height={size}
       role="img"
-      aria-label="PitchPlay"
+      aria-label="Sapna11"
       data-testid={testid}
       className={className}
       style={glow ? { filter: `drop-shadow(0 0 10px ${TURF.red}66)` } : undefined}
     >
       <defs>
-        <linearGradient id="turfTile" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={TURF.airRaised} />
-          <stop offset="1" stopColor={TURF.air} />
-        </linearGradient>
-        <linearGradient id="turfBall" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={TURF.fire} />
+        <linearGradient id="sapnaTile" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FF3B44" />
           <stop offset="0.55" stopColor={TURF.red} />
           <stop offset="1" stopColor={TURF.redDeep} />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="126" height="126" rx={rounded} fill="url(#turfTile)" stroke={TURF.airLine} strokeWidth="2" />
-      <path d="M18 98 L52 64" stroke={TURF.neonAir} strokeWidth="7" strokeLinecap="round" opacity="0.9" />
-      <path d="M26 108 L64 70" stroke={TURF.neonAir} strokeWidth="4" strokeLinecap="round" opacity="0.45" />
-      <circle cx="80" cy="50" r="29" fill="url(#turfBall)" />
-      <path d="M63 32 C73 44 73 56 65 68" stroke={TURF.air} strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M98 32 C88 44 88 56 96 68" stroke={TURF.air} strokeWidth="4" fill="none" strokeLinecap="round" />
-      <rect x="20" y="112" width="88" height="5" rx="2.5" fill={TURF.red} opacity="0.9" />
+      <rect x="1" y="1" width="126" height="126" rx={rounded} fill="url(#sapnaTile)" stroke="rgba(0,0,0,0.18)" strokeWidth="2" />
+
+      {/* Translucent "11" behind the letterform — two condensed strokes with flags. */}
+      <g fill="#FFFFFF" opacity="0.17">
+        <path d="M22 34 L34 28 L34 92 L22 92 Z" />
+        <path d="M46 34 L58 28 L58 92 L46 92 Z" />
+      </g>
+
+      {/* The "S". */}
+      <path
+        d="M96 47 C88 38 68 38 63 52 C58 66 79 69 84 77 C89 86 72 94 58 87"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="14"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Ball seam stitched across the lower bowl. */}
+      <path
+        d="M62 72 C72 84 90 82 99 68"
+        fill="none"
+        stroke={TURF.redDeep}
+        strokeWidth="5"
+        strokeLinecap="round"
+        strokeDasharray="0.5 11"
+      />
     </svg>
   );
 }
 
-/** Wordmark: the condensed Turf lockup used in headers and the landing page. */
-export function TurfWordmark({ size = "text-xl", accent = "Pitch", rest = "Play", className = "" }) {
+/** Wordmark: "SAPNA" in ink, the "11" in brand red. */
+export function TurfWordmark({ size = "text-xl", accent = "Sapna", rest = "11", className = "" }) {
   return (
-    <span className={`font-heading font-extrabold uppercase tracking-tight ${size} ${className}`} data-testid="turf-wordmark">
+    <span className={`font-display font-extrabold uppercase tracking-tight ${size} ${className}`} data-testid="turf-wordmark">
       <span className="text-zinc-950">{accent}</span>
       <span className="text-turf">{rest}</span>
     </span>

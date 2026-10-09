@@ -43,7 +43,7 @@ export function BottomNav({ active, onChange, openEntries = 0, balance, onMore }
                 )}
               </span>
               <span className={`text-[10px] font-bold uppercase tracking-tight truncate max-w-full ${on ? "text-zinc-950" : "text-zinc-500"}`}>
-                {it.label}
+                {it.value != null ? `₹${Number(it.value).toLocaleString("en-IN")}` : it.label}
               </span>
             </button>
           );

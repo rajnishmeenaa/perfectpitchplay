@@ -10,7 +10,7 @@ const REASON_LABEL = {
   signup_bonus: "Welcome bonus",
   daily_bonus: "Daily bonus",
   store_purchase: "Store pack",
-  plus_purchase: "PitchPlus",
+  plus_purchase: "Sapna Plus",
   entry_fee: "Contest entry",
   prize: "Prize",
   refund: "Refund",
@@ -18,7 +18,7 @@ const REASON_LABEL = {
 };
 
 /**
- * The Pitch Coin store: balance, the daily bonus, coin packs, PitchPlus and the
+ * The Sapna Coin store: balance, the daily bonus, coin packs, Sapna Plus and the
  * coin ledger. Purchases run through the store checkout — in sandbox billing
  * the grant is instant; in play mode the buttons wait for Google Play Billing.
  */
@@ -43,7 +43,7 @@ export function CoinStore({ coinCfg, onReload }) {
     return (
       <div className="bg-white border border-zinc-200 rounded-lg p-10 text-center" data-testid="store-disabled">
         <Coins size={40} weight="duotone" className="mx-auto text-amber-500" />
-        <div className="font-heading text-xl font-extrabold text-zinc-950 mt-3">Pitch Coins are paused</div>
+        <div className="font-heading text-xl font-extrabold text-zinc-950 mt-3">Sapna Coins are paused</div>
         <p className="text-sm text-zinc-500 mt-2 max-w-sm mx-auto">The organiser has switched the coin economy off for now. Your balance is safe — wallet contests continue as usual.</p>
         <div className="font-heading text-3xl font-extrabold text-amber-600 tabular mt-4">{coins(coinCfg.balance)}</div>
       </div>
@@ -68,7 +68,7 @@ export function CoinStore({ coinCfg, onReload }) {
     setBusy(pack.id);
     try {
       const { data } = await api.post("/coins/store/checkout", { pack_id: pack.id });
-      if (data.kind === "plus") toast.success("PitchPlus is active — enjoy your discount!");
+      if (data.kind === "plus") toast.success("Sapna Plus is active — enjoy your discount!");
       else toast.success(`+${coins(pack.coins)} coins added!`);
       onReload();
       loadLedger();
@@ -90,14 +90,14 @@ export function CoinStore({ coinCfg, onReload }) {
       {/* Balance + daily bonus */}
       <div className="grid md:grid-cols-3 gap-5">
         <div className="md:col-span-2 bg-gradient-to-br from-amber-400 to-amber-600 text-white rounded-lg p-6 border border-amber-500">
-          <div className="text-xs font-bold uppercase tracking-widest opacity-80">Pitch Coin balance</div>
+          <div className="text-xs font-bold uppercase tracking-widest opacity-80">Sapna Coin balance</div>
           <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2" data-testid="coin-balance">
             {coins(coinCfg.balance)}
           </div>
           {coinCfg.plus_active ? (
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/15 border border-white/30 px-3 py-1.5" data-testid="plus-chip">
               <Crown size={14} weight="fill" className="text-white" />
-              <span className="text-xs font-extrabold">PitchPlus active</span>
+              <span className="text-xs font-extrabold">Sapna Plus active</span>
               <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">{coinCfg.plus_discount_pct}% off entries</span>
             </div>
           ) : (
@@ -111,7 +111,7 @@ export function CoinStore({ coinCfg, onReload }) {
               <div className="font-heading font-bold text-zinc-950">Daily bonus</div>
             </div>
             <p className="text-xs text-zinc-500 mt-1.5">
-              {coinCfg.daily_bonus > 0 ? `${coins(coinCfg.daily_bonus)} free coins every day you open PitchPlay.` : "No daily bonus is running right now."}
+              {coinCfg.daily_bonus > 0 ? `${coins(coinCfg.daily_bonus)} free coins every day you open Sapna11.` : "No daily bonus is running right now."}
             </p>
           </div>
           {coinCfg.can_claim_daily ? (
@@ -163,7 +163,7 @@ export function CoinStore({ coinCfg, onReload }) {
         </div>
       </div>
 
-      {/* PitchPlus */}
+      {/* Sapna Plus */}
       {plusPack && (
         <div className="turf-air rounded-lg p-5 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="plus-card">
           <div className="h-12 w-12 shrink-0 rounded-full bg-trophy/20 border border-trophy/50 grid place-items-center">
@@ -171,7 +171,7 @@ export function CoinStore({ coinCfg, onReload }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-heading text-lg font-extrabold uppercase tracking-tight text-trophy-light">PitchPlus</span>
+              <span className="font-heading text-lg font-extrabold uppercase tracking-tight text-trophy-light">Sapna Plus</span>
               <Sparkle size={14} weight="fill" className="text-trophy-light" />
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">

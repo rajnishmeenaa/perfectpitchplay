@@ -1037,7 +1037,7 @@ function MyTeams({ teams, players, match, onReload }) {
       const tag = p.id === tm.captain_id ? " (C)" : p.id === tm.vice_captain_id ? " (VC)" : "";
       return `• ${p.name}${tag} — ${p.role}`;
     });
-    const text = `${tm.name} · ${match.team_a_short} vs ${match.team_b_short}\n${rows.join("\n")}\n\nBuild yours on PitchPlay and play the same match.`;
+    const text = `${tm.name} · ${match.team_a_short} vs ${match.team_b_short}\n${rows.join("\n")}\n\nBuild yours on Sapna11 and play the same match.`;
     try {
       if (navigator.share) {
         await navigator.share({ title: tm.name, text });
@@ -1257,7 +1257,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
             <Wallet size={16} weight="fill" className="text-neon" />
             <span className="text-sm font-extrabold text-zinc-900">Play one XI in several contests</span>
             <span className="text-[11px] text-zinc-500">
-              {useCoins ? `paid with Pitch Coins (${Number(coinBal).toLocaleString("en-IN")} available)` : `paid from your available balance (${money(walletBalance)})`}
+              {useCoins ? `paid with Sapna Coins (${Number(coinBal).toLocaleString("en-IN")} available)` : `paid from your available balance (${money(walletBalance)})`}
             </span>
           </div>
           {coinsOn && (

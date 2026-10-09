@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sapna11 brand red, measured from the source app-icon artwork
+         (most common colour, 4.7% of pixels; corner/border average is #E30D1A). -->
+    <color name="ic_launcher_background">#EA0D1A</color>
+</resources>

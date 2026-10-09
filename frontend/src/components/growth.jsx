@@ -26,7 +26,7 @@ export function ReferralCard() {
     toast.success("Invite message copied");
   };
   const share = async () => {
-    const payload = { title: "PitchPlay", text: data.share_text };
+    const payload = { title: "Sapna11", text: data.share_text };
     if (navigator.share) {
       try { await navigator.share(payload); return; } catch (e) { if (e?.name === "AbortError") return; }
     }

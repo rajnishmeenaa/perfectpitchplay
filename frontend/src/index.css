@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap');
+@import './assets/fonts.css';
 
 /* ============================================================================
    TURF — the app's atomic design system (web layer), v1.8 light direction.
@@ -227,7 +227,12 @@ code {
 
 /* Money: the currency glyph steps back so the amount is what lands. Only ever
    applied to strings that begin with the rupee sign (money / shortMoney). */
-.turf-money { display: inline-block; }
+.turf-money {
+    display: inline-block;
+    font-family: 'Archivo', 'Barlow', ui-sans-serif, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+}
 .turf-money::first-letter {
     font-size: 0.7em;
     font-weight: 600;

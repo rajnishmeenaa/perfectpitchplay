@@ -21,11 +21,11 @@ import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
 import { CoinStore } from "../components/coinStore";
 import { BottomNav } from "../components/bottomNav";
 import { MatchCarousel } from "../components/matchCarousel";
-import { SportStrip, ContestLobby, TurfCard, TurfMark, SPORTS, shortMoney } from "../components/turf";
+import { SportStrip, ContestLobby, TurfCard, TurfMark, TurfWordmark, SPORTS, shortMoney } from "../components/turf";
 import { useNavigate } from "react-router-dom";
 
 // Wallet-card backdrop. Ships in public/brand so the Android shell bundles it.
-const PROMO = process.env.PUBLIC_URL + "/brand/promo-ball.jpg";
+const PROMO = process.env.PUBLIC_URL + "/brand/sapna-pitch.jpg";
 
 const StatusBadge = ({ status }) => {
   const map = {
@@ -66,7 +66,7 @@ const SECTION_TITLES = {
   entries: "My contests",
   wallet: "Wallet",
   fantasy: "Fantasy",
-  store: "Pitch Coin Store",
+  store: "Sapna Coin Store",
 };
 
 function MobileGate({ name, onSaved, setMobile, onLogout }) {
@@ -97,7 +97,7 @@ function MobileGate({ name, onSaved, setMobile, onLogout }) {
       <div className="w-full max-w-md bg-white border border-zinc-200 rounded-2xl p-8">
         <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950">
           <CricketBall weight="fill" className="text-emerald-600" size={26} />
-          PitchPlay
+          Sapna11
         </div>
         <h1 className="mt-6 font-heading text-2xl font-extrabold tracking-tight text-zinc-950">
           One last step, {name?.split(" ")[0]}
@@ -263,29 +263,29 @@ export default function UserApp() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <AvatarTrigger user={user} onClick={() => setMoreOpen(true)} />
-            <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950 min-w-0">
+            <div className="flex items-center gap-2 font-display font-extrabold text-lg text-zinc-950 min-w-0">
               <TurfMark size={26} className="shrink-0" rounded={9} />
-              <span className="truncate">PitchPlay</span>
+              <TurfWordmark size="text-lg" className="truncate" />
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
             {coinCfg?.enabled && (
               <button
                 type="button"
                 onClick={() => goTo("store")}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 rounded-full hover:bg-amber-100 active:scale-[0.98] transition-all"
+                className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-amber-50 border border-amber-200 rounded-full hover:bg-amber-100 active:scale-[0.98] transition-all"
                 data-testid="coin-pill"
-                aria-label="Open the Pitch Coin store"
+                aria-label="Open the Sapna Coin store"
               >
-                <Coins size={18} weight="duotone" className="text-amber-500" />
-                <span className="text-xs font-bold uppercase tracking-wider text-amber-700">Coins</span>
-                <CountUp value={coinCfg.balance} fromZero prefix="" className="font-heading font-extrabold text-amber-900" />
+                <Coins size={16} weight="duotone" className="text-amber-500 shrink-0" />
+                <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider text-amber-700">Coins</span>
+                <CountUp value={coinCfg.balance} fromZero prefix="" className="font-heading font-extrabold text-[13px] sm:text-base text-amber-900 tabular" />
               </button>
             )}
-            <div className="hidden sm:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full" data-testid="wallet-pill">
-              <Wallet size={18} weight="duotone" className="text-emerald-700" />
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Wallet</span>
-              <CountUp value={user?.wallet_balance} fromZero className="font-heading font-extrabold text-emerald-900" />
+            <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-1.5 sm:py-2 bg-emerald-50 border border-emerald-200 rounded-full" data-testid="wallet-pill">
+              <Wallet size={16} weight="duotone" className="text-emerald-700 shrink-0" />
+              <span className="hidden sm:inline text-xs font-bold uppercase tracking-wider text-emerald-800">Wallet</span>
+              <CountUp value={user?.wallet_balance} fromZero className="font-heading font-extrabold text-[13px] sm:text-base text-emerald-900 tabular" />
             </div>
             <NotificationBell refreshToken={notifyToken} />
           </div>
@@ -327,7 +327,7 @@ export default function UserApp() {
               <CaretLeft size={16} weight="bold" />
             </button>
             <h1 className="font-heading text-xl sm:text-2xl font-extrabold tracking-tight text-zinc-950 truncate">
-              {SECTION_TITLES[tab] || "PitchPlay"}
+              {SECTION_TITLES[tab] || "Sapna11"}
             </h1>
           </div>
         )}
@@ -394,8 +394,11 @@ export default function UserApp() {
               columns="md:grid-cols-2 lg:grid-cols-3"
               empty={
                 <EmptyState
-                  title={matchFilter ? "No contests for this match" : "No contests yet"}
-                  body={matchFilter ? "Pick another match, or clear the filter to see everything open." : "The admin hasn't dropped any contest. Check back soon."}
+                  title={matchFilter ? "No contests for this match" : "No contests open right now"}
+                  body={matchFilter
+                    ? "Clear the match filter, or pick another match to see everything open."
+                    : "New contests drop before every match. Try a category above, or check back soon."}
+                  action={matchFilter ? { label: "Show all matches", onClick: () => setMatchFilter(null) } : null}
                 />
               }
               renderItem={(c) => (
@@ -436,7 +439,7 @@ export default function UserApp() {
                         <div className="font-heading font-bold text-zinc-950">{e.contest_title}</div>
                         <StatusBadge status={e.status} />
                       </div>
-                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {e.payment_method === "coins" ? <span className="text-amber-600 font-semibold" data-testid={`paid-coins-${e.id}`}>{Number(e.paid_coins || e.entry_fee).toLocaleString("en-IN")} coins</span> : money(e.entry_fee)} · {e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : e.payment_method === "coins" ? <span className="text-amber-700 font-semibold" data-testid={`paid-coins-label-${e.id}`}>Paid with Pitch Coins</span> : `UTR: ${e.utr || "—"}`}</div>
+                      <div className="text-sm text-zinc-500 mt-1 tabular">Entry: {e.payment_method === "coins" ? <span className="text-amber-600 font-semibold" data-testid={`paid-coins-${e.id}`}>{Number(e.paid_coins || e.entry_fee).toLocaleString("en-IN")} coins</span> : money(e.entry_fee)} · {e.payment_method === "wallet" ? <span className="text-emerald-700 font-semibold" data-testid={`paid-wallet-${e.id}`}>Paid from wallet</span> : e.payment_method === "coins" ? <span className="text-amber-700 font-semibold" data-testid={`paid-coins-label-${e.id}`}>Paid with Sapna Coins</span> : `UTR: ${e.utr || "—"}`}</div>
                       {e.team_name && (
                         <div className="text-xs text-zinc-500 mt-1" data-testid={`entry-team-${e.id}`}>
                           <Flag size={12} weight="fill" className="inline mr-1 text-emerald-600" />Team {e.team_name}
@@ -694,132 +697,111 @@ function ContestCard({ contest, onJoin, onFantasy }) {
   const cd = useCountdown(contest.match_time);
   const closed = contest.status !== "open" || (cd && cd.over);
   const isFantasy = contest.kind === "fantasy";
+  const spots = Number(contest.max_participants || 0);
+  const taken = Number(contest.participants_count || 0);
+  const left = Math.max(spots - taken, 0);
+  const pct = fillPct(contest);
+  const filling = spots > 0 && pct >= 85;
+  const mega = spots >= 1000;
+  const ranks = contest.prize_breakdown || [];
+  const firstWin = ranks.length ? Number(ranks[0].amount) : null;
+
   const share = () => {
-    const text = `🏏 Join "${contest.title}" on PitchPlay!\nEntry ₹${contest.entry_fee} · Prize pool ₹${contest.prize_pool}\n${window.location.origin}/?contest=${contest.id}`;
+    const text = `🏏 Join "${contest.title}" on Sapna11!\nEntry ₹${contest.entry_fee} · Prize pool ₹${contest.prize_pool}\n${window.location.origin}/?contest=${contest.id}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
   };
-  const mega = Number(contest.max_participants || 0) >= 1000;
+
+  // One slot, four states: build an XI, open an external contest, wait for
+  // approval, or pay the entry. The pill keeps the same footprint either way so
+  // a list of mixed contests still scans as a column.
+  let cta;
+  if (isFantasy) {
+    cta = <Button disabled={closed} onClick={onFantasy} className="turf-join rounded-full border-0 min-w-[92px] active:scale-95" data-testid={`fantasy-build-btn-${contest.id}`}>Build XI</Button>;
+  } else if (contest.external_link) {
+    cta = <a href={contest.external_link} target="_blank" rel="noopener noreferrer" className="turf-join inline-flex items-center justify-center gap-1.5 rounded-full border-0 min-w-[92px] px-4 py-2.5 active:scale-95 transition-transform" data-testid={`card-play-link-${contest.id}`}><ArrowSquareOut size={15} weight="bold" />Play</a>;
+  } else if (contest.my_entry_status === "pending") {
+    cta = <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-yellow-100 text-yellow-800 text-[11px] font-extrabold uppercase tracking-wider px-3 py-2.5 min-w-[92px] text-center" data-testid={`card-pending-${contest.id}`}><Clock size={13} weight="bold" />Pending</span>;
+  } else if (contest.my_entry_status === "approved") {
+    cta = <span className="inline-flex items-center justify-center gap-1.5 rounded-full bg-neon/12 text-neon-deep text-[11px] font-extrabold uppercase tracking-wider px-3 py-2.5 min-w-[92px]" data-testid={`joined-${contest.id}`} data-joined="true"><CheckCircle size={13} weight="fill" />In</span>;
+  } else {
+    cta = <Button disabled={closed} onClick={onJoin} className="turf-join rounded-full border-0 min-w-[92px] active:scale-95" data-testid={`join-btn-${contest.id}`}>{closed ? "Closed" : "Join"}</Button>;
+  }
+
   return (
-    <div className="group bg-white border border-zinc-200 rounded-turf shadow-card overflow-hidden hover:border-neon/40 transition-colors" data-testid={`contest-card-${contest.id}`}>
-      {/* Mega contests wear the mowed ground band: the pot is the headline. */}
-      {mega && (
-        <div className="turf-ground m-4 mb-0 flex items-center justify-between px-4 py-3" data-testid={`prize-band-${contest.id}`}>
-          <div>
-            <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/75">Prize pool</div>
-            <div className="turf-num turf-money text-[22px] leading-tight">{shortMoney(contest.prize_pool)}</div>
-          </div>
-          <div className="text-right">
-            <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/75">Spots</div>
-            <div className="turf-num text-[16px] leading-tight">{Number(contest.max_participants).toLocaleString("en-IN")}</div>
-          </div>
-        </div>
-      )}
-      <div className="p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
+    <article className="group bg-white border border-zinc-200 rounded-turf shadow-card overflow-hidden hover:border-neon/40 transition-colors" data-testid={`contest-card-${contest.id}`}>
+      {/* Mega contests wear the mowed-outfield band along the top edge. */}
+      {mega && <div className="turf-ground h-1.5" aria-hidden="true" data-testid={`prize-band-${contest.id}`} />}
+
+      <div className="flex items-stretch gap-3 p-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             <StatusBadge status={contest.status} />
             {isFantasy && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-xs font-bold uppercase tracking-wider" data-testid={`fantasy-chip-${contest.id}`}>
-                <Flag size={11} weight="fill" /> Fantasy · {contest.match_label}
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase tracking-wider" data-testid={`fantasy-chip-${contest.id}`}>
+                <Flag size={10} weight="fill" /> Fantasy
+              </span>
+            )}
+            {filling && !closed && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-turf/10 text-turf text-[10px] font-extrabold uppercase tracking-wider" data-testid={`filling-chip-${contest.id}`}>
+                <Lightning size={10} weight="fill" /> Filling fast
               </span>
             )}
           </div>
-          <h3 className="font-heading text-xl font-bold text-zinc-950 mt-3 group-hover:text-emerald-700 transition-colors">
+
+          <h3 className="font-heading text-[15px] font-extrabold uppercase tracking-tight text-zinc-950 mt-2 leading-snug line-clamp-1 group-hover:text-neon-deep transition-colors">
             {contest.title}
           </h3>
-          {contest.description && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{contest.description}</p>}
-        </div>
-        <button type="button" onClick={share} className="p-2 rounded-full text-emerald-700 hover:bg-emerald-50" title="Share on WhatsApp" data-testid={`share-btn-${contest.id}`}>
-          <WhatsappLogo size={22} weight="fill" />
-        </button>
-      </div>
-      {contest.status !== "open" ? (
-        <div className="mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold bg-zinc-100 text-zinc-600" data-testid={`closed-note-${contest.id}`}>
-          <Clock size={16} weight="bold" /> {contest.status === "completed" ? "Results are in" : "Entries closed"}
-        </div>
-      ) : cd && (cd.over ? (
-        <div className="mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold bg-zinc-100 text-zinc-600" data-testid={`countdown-${contest.id}`}>
-          <Clock size={16} weight="bold" /> Match started — entries are closed
-        </div>
-      ) : (
-        <div className={`mt-4 flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold tabular ${cd.urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-orange-50 text-orange-800 border border-orange-100"}`} data-testid={`countdown-${contest.id}`}>
-          <Clock size={16} weight="bold" /> Entries close in {cd.text}
-        </div>
-      ))}
-      {contest.max_participants > 0 && (
-        <div className="mt-4" data-testid={`spots-${contest.id}`}>
-          <div className="flex items-baseline gap-2 text-[11px] tabular">
-            <span className={`font-extrabold ${contest.participants_count >= contest.max_participants * 0.9 ? "text-red-400" : "text-turf"}`}>
-              {Math.max(contest.max_participants - contest.participants_count, 0).toLocaleString("en-IN")} left
-            </span>
-            <span className="text-zinc-600">|</span>
-            <span className="text-zinc-500">{contest.max_participants.toLocaleString("en-IN")} spots</span>
-            <span className="ml-auto text-zinc-500">{fillPct(contest)}% full</span>
+
+          <div className="mt-1.5 flex items-end gap-2">
+            <span className="turf-num turf-money text-[26px] leading-none text-trophy-dark">{shortMoney(contest.prize_pool)}</span>
+            <span className="turf-eyebrow pb-0.5">prize pool</span>
           </div>
-          <div className="mt-1.5 h-1.5 rounded-full bg-zinc-200 overflow-hidden" role="presentation">
-            <div className="h-full rounded-full bg-turf transition-[width] duration-500" style={{ width: `${Math.max(fillPct(contest), 2)}%` }} data-testid={`spots-bar-${contest.id}`} />
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500 tabular" data-testid={`prize-breakdown-${contest.id}`}>
+            {firstWin != null && <span>1st <b className="text-zinc-800">{money(firstWin)}</b></span>}
+            {ranks.length > 1 && <span className="text-zinc-300">·</span>}
+            {ranks.length > 1 && <span>Top {ranks.length} win</span>}
+            {ranks.length <= 1 && <span>{taken.toLocaleString("en-IN")} playing</span>}
           </div>
+
+          {spots > 0 && (
+            <div className="mt-2.5" data-testid={`spots-${contest.id}`}>
+              <div className="h-1.5 rounded-full bg-zinc-200 overflow-hidden" role="presentation">
+                <div className={`h-full rounded-full transition-[width] duration-500 ${filling ? "bg-turf" : "bg-neon"}`} style={{ width: `${Math.max(pct, 2)}%` }} data-testid={`spots-bar-${contest.id}`} />
+              </div>
+              <div className="mt-1 flex items-baseline justify-between text-[10px] font-bold tabular">
+                <span className={filling ? "text-turf" : "text-zinc-600"}>{left.toLocaleString("en-IN")} left</span>
+                <span className="text-zinc-400">{spots.toLocaleString("en-IN")} spots · {pct}% full</span>
+              </div>
+            </div>
+          )}
+
+          {contest.status !== "open" ? (
+            <div className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-bold text-zinc-500" data-testid={`closed-note-${contest.id}`}>
+              <Clock size={13} weight="bold" /> {contest.status === "completed" ? "Results are in" : "Entries closed"}
+            </div>
+          ) : cd && cd.over ? (
+            <div className="mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-bold text-zinc-500" data-testid={`countdown-${contest.id}`}>
+              <Clock size={13} weight="bold" /> Match started — entries closed
+            </div>
+          ) : cd ? (
+            <div className={`mt-2.5 inline-flex items-center gap-1.5 text-[11px] font-extrabold tabular ${cd.urgent ? "text-turf" : "text-zinc-600"}`} data-testid={`countdown-${contest.id}`}>
+              <Timer size={13} weight="bold" /> Closes in {cd.text}
+            </div>
+          ) : null}
         </div>
-      )}
-      <div className="grid grid-cols-2 gap-3 mt-5">
-        <div className="bg-zinc-50 border border-zinc-100 rounded p-3">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Entry fee</div>
-          <div className="font-heading text-xl font-extrabold text-zinc-950 tabular mt-1">{money(contest.entry_fee)}</div>
-        </div>
-        <div className="bg-trophy-soft border border-trophy/30 rounded p-3">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-trophy-dark">Prize pool</div>
-          <CountUp value={contest.prize_pool} fromZero duration={1100} className="block font-heading text-xl font-extrabold text-zinc-950 mt-1" />
-        </div>
-      </div>
-      {contest.prize_breakdown?.length > 0 && (
-        <div className="mt-3 rounded-md border border-turf/20 bg-turf/10 px-3 py-2" data-testid={`prize-breakdown-${contest.id}`}>
-          <div className="text-[10px] font-bold uppercase tracking-widest text-turf mb-1.5">Prize breakdown</div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-            {contest.prize_breakdown.map((item) => (
-              <span key={item.rank} className="text-zinc-600">Rank <b className="text-zinc-900">{item.rank}</b>: <b className="text-turf">{money(item.amount)}</b></span>
-            ))}
+
+        <div className="shrink-0 pl-3 border-l border-zinc-100 flex flex-col items-end justify-between gap-3">
+          <div className="text-right">
+            <div className="turf-num turf-money text-[19px] leading-none text-zinc-950">{money(contest.entry_fee)}</div>
+            <div className="turf-eyebrow text-[8px] mt-1">entry</div>
           </div>
+          {cta}
+          <button type="button" onClick={share} className="p-1.5 -mr-1.5 rounded-full text-zinc-400 hover:text-neon-deep hover:bg-emerald-50 transition-colors" title="Share on WhatsApp" aria-label="Share this contest on WhatsApp" data-testid={`share-btn-${contest.id}`}>
+            <WhatsappLogo size={17} weight="fill" />
+          </button>
         </div>
-      )}
-      <div className="flex items-center justify-between mt-5 pt-4 border-t border-zinc-100">
-        <div className="text-xs text-zinc-500 tabular" data-testid={`joined-${contest.id}`}>
-          {contest.prize_breakdown?.length
-            ? `Prizes for top ${contest.prize_breakdown.length}`
-            : `${contest.participants_count || 0} playing`}
-        </div>
-        {isFantasy ? (
-          <Button
-            disabled={closed}
-            onClick={onFantasy}
-            className="turf-join rounded-full border-0 active:scale-95"
-            data-testid={`fantasy-build-btn-${contest.id}`}
-          >
-            <Flag size={16} weight="fill" className="mr-1" /> {closed ? "Contest closed" : "Build XI & join"}
-          </Button>
-        ) : contest.external_link ? (
-          <a href={contest.external_link} target="_blank" rel="noopener noreferrer"
-            className="turf-join inline-flex items-center gap-2 rounded-full border-0 px-4 py-2 active:scale-95 transition-transform"
-            data-testid={`card-play-link-${contest.id}`}>
-            <ArrowSquareOut size={16} weight="bold" /> Open contest
-          </a>
-        ) : contest.my_entry_status === "pending" ? (
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-2" data-testid={`card-pending-${contest.id}`}>
-            <Clock size={14} weight="bold" /> Waiting for approval
-          </span>
-        ) : (
-        <Button
-          disabled={closed}
-          onClick={onJoin}
-          className="turf-join rounded-full border-0 active:scale-95"
-          data-testid={`join-btn-${contest.id}`}
-        >
-          Join contest
-        </Button>
-        )}
       </div>
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -869,7 +851,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
     setCoinPaying(true);
     try {
       const { data } = await api.post("/entries/coins", { contest_id: contest.id, team_id: team?.id || null });
-      toast.success("Paid with Pitch Coins — you're in!");
+      toast.success("Paid with Sapna Coins — you're in!");
       onClose();
       onPaid?.(data);
       onDone();
@@ -922,7 +904,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
           <DialogTitle className="font-heading text-2xl font-extrabold tracking-tight">Join {contest.title}</DialogTitle>
           <DialogDescription>
             Entry fee <span className="font-bold text-emerald-700 tabular">{money(contest.entry_fee)}</span>.
-            {coinsOn ? " Pay with Pitch Coins instantly, or use your wallet / UPI below." : " Pay to the admin UPI below, then upload the payment screenshot."}
+            {coinsOn ? " Pay with Sapna Coins instantly, or use your wallet / UPI below." : " Pay to the admin UPI below, then upload the payment screenshot."}
           </DialogDescription>
         </DialogHeader>
 
@@ -939,10 +921,10 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
         {coinsOn && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between gap-3" data-testid="coin-pay-box">
             <div className="min-w-0">
-              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">Pitch Coins</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-700">Sapna Coins</div>
               <div className="font-heading text-xl font-extrabold text-amber-900 tabular" data-testid="coin-pay-balance">{Number(coinBal).toLocaleString("en-IN")} coins</div>
               {plusPct > 0 && (
-                <div className="text-[11px] font-bold text-turf mt-0.5" data-testid="coin-pay-plus">PitchPlus · {plusPct}% off every entry</div>
+                <div className="text-[11px] font-bold text-turf mt-0.5" data-testid="coin-pay-plus">Sapna Plus · {plusPct}% off every entry</div>
               )}
               {!canCoins && (
                 <div className="text-xs text-red-700 mt-0.5" data-testid="coin-insufficient">
@@ -1243,7 +1225,7 @@ function TopUpDialog({ open, onClose, onDone, config = {} }) {
   useEffect(() => { if (open) { setAmt(""); setUtr(""); setBusy(false); } }, [open]);
 
   const amount = parseFloat(amt);
-  const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "PitchPlay")}&am=${amount || ""}&cu=INR&tn=${encodeURIComponent("Wallet top-up")}`;
+  const upiLink = `upi://pay?pa=${encodeURIComponent(config.admin_upi_id || "")}&pn=${encodeURIComponent(config.payee_name || "Sapna11")}&am=${amount || ""}&cu=INR&tn=${encodeURIComponent("Wallet top-up")}`;
   const copyUpi = () => { navigator.clipboard?.writeText(config.admin_upi_id || ""); toast.success("UPI ID copied"); };
 
   const submitUtr = async () => {
@@ -1551,12 +1533,24 @@ function WalletHistory({ items }) {
   );
 }
 
-function EmptyState({ title, body }) {
+function EmptyState({ title, body, action }) {
   return (
-    <div className="bg-white border border-dashed border-zinc-300 rounded-lg p-16 text-center">
-      <Clock size={40} weight="duotone" className="text-zinc-400 mx-auto" />
-      <div className="font-heading font-bold text-zinc-800 text-lg mt-3">{title}</div>
-      <div className="text-sm text-zinc-500 mt-1">{body}</div>
+    <div className="bg-white border border-dashed border-zinc-300 rounded-turf p-10 sm:p-14 text-center">
+      <div className="grid place-items-center h-14 w-14 mx-auto rounded-full bg-zinc-100">
+        <Trophy size={26} weight="duotone" className="text-zinc-400" />
+      </div>
+      <div className="font-heading font-extrabold text-zinc-900 text-lg mt-3 uppercase tracking-tight">{title}</div>
+      <div className="text-[13px] text-zinc-500 mt-1 max-w-sm mx-auto">{body}</div>
+      {action && (
+        <button
+          type="button"
+          onClick={action.onClick}
+          className="turf-cta mt-5 inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-[11px] active:scale-95"
+          data-testid="empty-state-action"
+        >
+          {action.label}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">PitchPlay</string>
-    <string name="title_activity_main">PitchPlay</string>
+    <string name="app_name">Sapna11</string>
+    <string name="title_activity_main">Sapna11</string>
     <string name="package_name">com.pitchplay.app</string>
     <string name="custom_url_scheme">com.pitchplay.app</string>
 </resources>

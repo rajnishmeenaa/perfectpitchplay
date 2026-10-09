@@ -74,7 +74,7 @@ export function MoreMenu({ open, onClose, user, stats, entries, coins, onGo, onO
               value={active || null} onClick={() => go("fantasy")} testid="more-matches" />
             <MenuRow icon={Ticket} label="Bonus & Coupons" hint="Non-withdrawable entry credit"
               value={bonus ? `₹${Number(bonus).toLocaleString("en-IN")}` : null} onClick={() => go("wallet", "bonus")} testid="more-vouchers" />
-            <MenuRow icon={Coins} label="Pitch Coins" hint="Balance, store and history"
+            <MenuRow icon={Coins} label="Sapna Coins" hint="Balance, store and history"
               value={coins ? `${Number(coins.balance || 0).toLocaleString("en-IN")}` : null} onClick={() => go("store")} testid="more-coins" />
           </MenuGroup>
 
@@ -97,7 +97,7 @@ export function MoreMenu({ open, onClose, user, stats, entries, coins, onGo, onO
           <div className="flex items-start gap-2 px-2 pb-1 text-[11px] leading-relaxed text-zinc-500">
             <Info size={13} weight="bold" className="mt-0.5 shrink-0 text-zinc-500" />
             <span>
-              PitchPlay is a paid skill game. Only you can withdraw your wallet balance, and every
+              Sapna11 is a paid skill game. Only you can withdraw your wallet balance, and every
               settlement is published with its scorecard. 18+ only.
               {version ? ` You are on v${version}.` : ""}
             </span>

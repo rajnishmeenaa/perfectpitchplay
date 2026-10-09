@@ -1,0 +1,15 @@
+{
+  "short_name": "Sapna11",
+  "name": "Sapna11 — Fantasy Cricket Contests",
+  "description": "Private fantasy cricket contests with a live match centre, instant leaderboards and direct payouts.",
+  "background_color": "#ED1B24",
+  "theme_color": "#ED1B24",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": ".",
+  "icons": [
+    { "src": "brand/appicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "brand/appicon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "brand/appicon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

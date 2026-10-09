@@ -2,7 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
 /**
- * Native notifications for the PitchPlay Android/iOS shell.
+ * Native notifications for the Sapna11 Android/iOS shell.
  *
  * These are *local* notifications scheduled on the device: reminders (team lock,
  * build-your-XI nudge) fire from the OS alarm even when the app is closed, and
@@ -132,7 +132,7 @@ export async function alertNewInboxItems(items = []) {
   const fresh = items.filter((n) => n && n.id && !seen.includes(n.id) && !n.read);
   if (!fresh.length) return 0;
   for (const n of fresh.slice(0, 3)) {
-    await notifyNow(n.title || "PitchPlay", n.body || "", hashId(n.id));
+    await notifyNow(n.title || "Sapna11", n.body || "", hashId(n.id));
   }
   try {
     localStorage.setItem("pp.notif.seen", JSON.stringify([...seen, ...fresh.map((f) => f.id)].slice(-200)));

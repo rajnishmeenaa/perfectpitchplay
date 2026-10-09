@@ -9,7 +9,7 @@ import { ArrowRight, ShieldCheck, Lightning, Trophy, GoogleLogo, NumberCircleOne
 import OtpAuth from "../components/otpAuth";
 import { TurfLogo } from "../components/turf";
 
-const HERO = process.env.PUBLIC_URL + "/brand/hero-stadium.jpg";
+const HERO = process.env.PUBLIC_URL + "/brand/sapna-hero.jpg";
 
 
 const STEPS = [
@@ -276,8 +276,8 @@ export default function Landing() {
 
       <footer className="border-t border-zinc-200 bg-white/90">
         <div className="max-w-7xl mx-auto px-6 py-6 flex justify-between text-sm text-zinc-500">
-          <span>© PitchPlay — Play responsibly. 18+ only.</span>
-          <span className="font-mono">v1.8.0</span>
+          <span>© Sapna11 — Play responsibly. 18+ only.</span>
+          <span className="font-mono">v1.9.0</span>
         </div>
       </footer>
     </div>

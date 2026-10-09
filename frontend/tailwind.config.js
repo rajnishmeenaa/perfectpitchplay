@@ -161,8 +161,9 @@ module.exports = {
       fontFamily: {
         heading: ['Barlow Condensed', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         body: ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        display: ['Barlow Condensed', 'Impact', 'ui-sans-serif', 'sans-serif'],
-        num: ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif']
+        display: ['Archivo', 'Barlow Condensed', 'Impact', 'ui-sans-serif', 'sans-serif'],
+        num: ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        money: ['Archivo', 'Barlow', 'ui-sans-serif', 'sans-serif']
       },
       fontSize: {
         '2xs': ['0.6875rem', { lineHeight: '0.875rem', letterSpacing: '0.04em' }]

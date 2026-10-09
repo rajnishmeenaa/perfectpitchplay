@@ -81,7 +81,7 @@ export default function AdminCoins() {
           <h1 className="font-heading text-3xl font-extrabold tracking-tighter text-zinc-950 flex items-center gap-2">
             <Coins size={26} weight="fill" className="text-amber-500" /> Coins &amp; store
           </h1>
-          <p className="text-zinc-500 mt-1">Pitch Coins economy: bonuses, the store catalog, PitchPlus and sandbox vs Google Play billing.</p>
+          <p className="text-zinc-500 mt-1">Sapna Coins economy: bonuses, the store catalog, Sapna Plus and sandbox vs Google Play billing.</p>
         </div>
         <Button onClick={() => setGrantOpen(true)} variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-50 font-bold rounded-full" data-testid="open-grant-btn">
           <Coins size={16} weight="fill" className="mr-1" /> Grant coins
@@ -101,7 +101,7 @@ export default function AdminCoins() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
             <div className="font-heading font-extrabold text-zinc-950">Coin economy</div>
-            <div className="text-xs text-zinc-500">Signup and daily bonuses, entry-fee discount for PitchPlus members.</div>
+            <div className="text-xs text-zinc-500">Signup and daily bonuses, entry-fee discount for Sapna Plus members.</div>
           </div>
           <label className="flex items-center gap-3 cursor-pointer" data-testid="coins-enabled-toggle">
             <Switch checked={form.enabled} onCheckedChange={(v) => setForm({ ...form, enabled: v })} />
@@ -278,7 +278,7 @@ function GrantDialog({ open, onClose, onDone }) {
       <DialogContent className="max-w-sm" data-testid="grant-coins-dialog">
         <DialogHeader>
           <DialogTitle className="font-heading font-extrabold">Grant coins</DialogTitle>
-          <DialogDescription>Add or remove Pitch Coins for a player. Every grant is written to their coin history.</DialogDescription>
+          <DialogDescription>Add or remove Sapna Coins for a player. Every grant is written to their coin history.</DialogDescription>
         </DialogHeader>
         {picked ? (
           <div className="flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" data-testid="grant-picked">

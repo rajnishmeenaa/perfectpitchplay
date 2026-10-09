@@ -563,9 +563,9 @@ async def payment_settings_admin_view() -> dict:
     return await get_payment_settings()
 
 
-# ---------- Pitch Coins (the artificial play currency) ----------
+# ---------- Sapna Coins (the artificial play currency) ----------
 #
-# Real money never moves in coins mode: contests are joined with Pitch Coins,
+# Real money never moves in coins mode: contests are joined with Sapna Coins,
 # prizes pay out in coins, and the Store "sells" packs through a sandbox billing
 # seam that is ready to be swapped for Google Play Billing later. Every coin
 # movement lands in the coins_ledger, so balances are always auditable.
@@ -574,7 +574,7 @@ COIN_PACK_DEFAULTS = [
     {"id": "coins_100", "kind": "coins", "title": "Starter Pack", "coins": 100, "price_inr": 0, "tag": "Great to start", "active": True},
     {"id": "coins_250", "kind": "coins", "title": "Player Pack", "coins": 250, "price_inr": 0, "tag": "Popular", "active": True},
     {"id": "coins_500", "kind": "coins", "title": "Pro Pack", "coins": 500, "price_inr": 0, "tag": "Best value", "active": True},
-    {"id": "plus_30d", "kind": "plus", "title": "PitchPlus", "coins": 0, "price_inr": 0, "tag": "Discount every entry", "active": True},
+    {"id": "plus_30d", "kind": "plus", "title": "Sapna Plus", "coins": 0, "price_inr": 0, "tag": "Discount every entry", "active": True},
 ]
 
 
@@ -641,7 +641,7 @@ async def grant_signup_coins(user_id: str) -> int:
     s = await get_coin_settings()
     if not s["enabled"] or s["signup_bonus"] <= 0:
         return 0
-    await grant_coins(user_id, s["signup_bonus"], "signup_bonus", "Welcome to PitchPlay — here's your starting stack")
+    await grant_coins(user_id, s["signup_bonus"], "signup_bonus", "Welcome to Sapna11 — here's your starting stack")
     return s["signup_bonus"]
 
 
@@ -1069,11 +1069,11 @@ class CoinsEntryBody(BaseModel):
 
 @api_router.post("/entries/coins")
 async def create_entry_coins(body: CoinsEntryBody, user=Depends(get_current_user)):
-    """Join a contest with Pitch Coins — the play currency. Auto-approved, no money involved."""
+    """Join a contest with Sapna Coins — the play currency. Auto-approved, no money involved."""
     rate_limit("join", user["id"])
     cs = await get_coin_settings()
     if not cs["enabled"]:
-        raise HTTPException(status_code=400, detail="Pitch Coins are paused right now. Please use your wallet to join.")
+        raise HTTPException(status_code=400, detail="Sapna Coins are paused right now. Please use your wallet to join.")
     contest = await get_joinable_contest(body.contest_id, user, coins_mode=True)
     team = await resolve_entry_team(contest, user, body.team_id)
     fee = round(float(contest.get("entry_fee") or 0), 2)
@@ -1100,7 +1100,7 @@ async def create_entry_coins(body: CoinsEntryBody, user=Depends(get_current_user
         "contest_kind": contest.get("kind", "classic"),
         "team_id": team["id"] if team else None,
         "team_name": team.get("name") if team else None,
-        "decision_note": "Paid with Pitch Coins" + (f" · Plus {cs['plus_discount_pct']}% off" if discount > 0 else ""),
+        "decision_note": "Paid with Sapna Coins" + (f" · Plus {cs['plus_discount_pct']}% off" if discount > 0 else ""),
         "decided_at": now_iso(),
         "winner_prize": 0.0,
         "paid_coins": payable,
@@ -1176,7 +1176,7 @@ async def my_topup_requests(user=Depends(get_current_user)):
     return await db.topup_requests.find({"user_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(100)
 
 
-# ---------- Pitch Coins: user endpoints ----------
+# ---------- Sapna Coins: user endpoints ----------
 #
 # Coins are the play currency. They can be won, refunded, granted and claimed
 # daily — but they are never money: no top-ups, no withdrawals, no taxes.
@@ -1213,7 +1213,7 @@ async def claim_daily_coins(user=Depends(get_current_user)):
     rate_limit("coins_daily", user["id"])
     cs = await get_coin_settings()
     if not cs["enabled"]:
-        raise HTTPException(status_code=400, detail="Pitch Coins are paused right now")
+        raise HTTPException(status_code=400, detail="Sapna Coins are paused right now")
     if cs["daily_bonus"] <= 0:
         raise HTTPException(status_code=400, detail="No daily bonus is running right now")
     today = _utc_day()
@@ -1247,10 +1247,10 @@ async def coins_store_checkout(body: CoinCheckoutBody, user=Depends(get_current_
     kind = pack.get("kind", "coins")
     if kind == "plus":
         if plus_active(user):
-            raise HTTPException(status_code=400, detail="You already have PitchPlus — it can't be stacked")
+            raise HTTPException(status_code=400, detail="You already have Sapna Plus — it can't be stacked")
         charged = int(cs["plus_price_coins"])
         if charged > 0:
-            await grant_coins(user["id"], -charged, "plus_purchase", "PitchPlus membership")
+            await grant_coins(user["id"], -charged, "plus_purchase", "Sapna Plus membership")
         base = user.get("plus_until")
         try:
             start = datetime.fromisoformat(base) if base else datetime.utcnow()
@@ -1271,7 +1271,7 @@ async def coins_store_checkout(body: CoinCheckoutBody, user=Depends(get_current_
         "user_name": user.get("name") or "",
         "pack_id": pack["id"],
         "kind": kind,
-        "title": pack.get("title") or ("PitchPlus" if kind == "plus" else "Coin pack"),
+        "title": pack.get("title") or ("Sapna Plus" if kind == "plus" else "Coin pack"),
         "coins": int(pack.get("coins") or 0) if kind != "plus" else 0,
         "price_inr": float(pack.get("price_inr") or 0),
         "amount_coins_charged": charged,
@@ -1285,7 +1285,7 @@ async def coins_store_checkout(body: CoinCheckoutBody, user=Depends(get_current_
     balance = await coin_balance(user["id"])
     if kind == "plus":
         await push_notification(
-            user["id"], "coins", "PitchPlus is live!",
+            user["id"], "coins", "Sapna Plus is live!",
             f"{coins_fmt(charged)} coins deducted. Plus is active with {cs['plus_discount_pct']}% off every entry.",
             {"order_id": order_id},
         )
@@ -1722,7 +1722,7 @@ async def admin_adjust_wallet(user_id: str, body: WalletAdjustBody, admin=Depend
     return {"ok": True, "wallet_balance": new_balance}
 
 
-# ---------- Pitch Coins: admin endpoints ----------
+# ---------- Sapna Coins: admin endpoints ----------
 
 class CoinGrantBody(BaseModel):
     user_id: str = Field(min_length=1, max_length=60)
@@ -2948,7 +2948,7 @@ def cric_call(endpoint: str, params: dict, api_key: str) -> dict:
     q["apikey"] = api_key
     try:
         resp = requests.get(f"{CRICAPI_BASE}/{endpoint}", params=q, timeout=30,
-                            headers={"User-Agent": "PitchPlay/1.0"})
+                            headers={"User-Agent": "Sapna11/1.0"})
     except requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"Could not reach the score service: {e}")
     if resp.status_code != 200:
@@ -3781,7 +3781,7 @@ async def fantasy_enter_multi(body: EnterMultiBody, user=Depends(get_current_use
     use_coins = (body.pay_with or "wallet") == "coins"
     cs = await get_coin_settings() if use_coins else None
     if use_coins and not cs["enabled"]:
-        raise HTTPException(status_code=400, detail="Pitch Coins are paused right now. Please use your wallet to join.")
+        raise HTTPException(status_code=400, detail="Sapna Coins are paused right now. Please use your wallet to join.")
 
     planned = []
     for cid in body.contest_ids:
@@ -4071,8 +4071,8 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 9, "version_name": "1.8.0", "apk_url": "",
-                        "notes": "New look: Dream11-grade contest lobby, live match centre, coin store",
+APP_VERSION_DEFAULTS = {"version_code": 10, "version_name": "1.9.0", "apk_url": "",
+                        "notes": "Sapna11: new icon, rebuilt contest lobby and live match centre",
                         "force_update": False}
 
 
@@ -4138,7 +4138,7 @@ async def admin_export_entries(contest_id: Optional[str] = None, status: Optiona
                         ["entry_id", "contest", "kind", "team_name", "user_name", "user_id", "status", "entry_fee",
                          "payment_method", "utr", "fantasy_points", "fantasy_rank", "prize", "created_at",
                          "decided_at", "note"],
-                        "pitchplay-entries.csv")
+                        "sapna11-entries.csv")
 
 
 @api_router.get("/admin/export/payouts.csv")
@@ -4159,7 +4159,7 @@ async def admin_export_payouts(status: Optional[str] = None, admin=Depends(requi
     return csv_response(rows, list(rows[0].keys()) if rows else
                         ["withdrawal_id", "user_name", "user_mobile", "upi_id", "amount", "status", "payout_id",
                          "utr", "payout_status", "requested_at", "created_at", "decided_at", "note"],
-                        "pitchplay-payouts.csv")
+                        "sapna11-payouts.csv")
 
 
 # ---------- Admin audit trail ----------
@@ -4217,7 +4217,7 @@ GUARD_DEFAULTS = {
     "terms_version": "1.0",
     "terms_title": "Terms, skill-game notice and eligibility",
     "terms_body": (
-        "PitchPlay hosts skill-based fantasy cricket contests. "
+        "Sapna11 hosts skill-based fantasy cricket contests. "
         "You must be 18 or older and allowed to play real-money skill games where you live "
         "(such games are restricted in some states). Entry fees are paid to the organiser and "
         "winnings are credited to your in-app wallet, which you can withdraw to your own UPI. "
@@ -4590,7 +4590,7 @@ async def spend_today(user_id: str) -> float:
 async def enforce_play_safety(user: dict, fee: float = 0.0, coins: bool = False) -> None:
     """Blocks new play for an excluded user or one over their daily spend cap.
 
-    With coins=True the fee is Pitch Coins, not rupees, so the rupee spend cap
+    With coins=True the fee is Sapna Coins, not rupees, so the rupee spend cap
     does not apply — but a self-exclusion (a chosen break) is always honoured.
     """
     if user.get("role") == "admin":
@@ -4899,7 +4899,7 @@ FAQ_DEFAULTS = [
      "a": "Use Add money for a UPI or card payment, or pay an entry fee directly from your wallet. "
           "Deposits are instant and you can set your own daily deposit limit in Play responsibly."},
     {"q": "Is this gambling?",
-     "a": "PitchPlay is a skill-based fantasy game: every entry depends on your knowledge of cricket. "
+     "a": "Sapna11 is a skill-based fantasy game: every entry depends on your knowledge of cricket. "
           "You must be 18 or older and real-money skill games are restricted in some Indian states, "
           "so check your local rules. You can lose your entry fee — never play to chase losses."},
 ]
@@ -5137,7 +5137,7 @@ async def my_referral(user=Depends(get_current_user)):
     return {
         "enabled": g["referral_enabled"],
         "code": code,
-        "share_text": (f"Join my PitchPlay contest — pick an XI, win real money. "
+        "share_text": (f"Join my Sapna11 contest — pick an XI, win real money. "
                        f"Use my invite code {code} when you sign up."),
         "referee_bonus": g["referee_bonus"],
         "referrer_reward": g["referrer_reward"],
@@ -5574,7 +5574,7 @@ async def admin_grant_bonus(user_id: str, body: BonusBody, admin=Depends(require
         raise HTTPException(status_code=404, detail="User not found")
     if u.get("role") == "admin":
         raise HTTPException(status_code=400, detail="Cannot grant bonus to an admin")
-    log = await credit_bonus(user_id, body.amount, (body.note or "Bonus credit from PitchPlay").strip()[:160], "admin")
+    log = await credit_bonus(user_id, body.amount, (body.note or "Bonus credit from Sapna11").strip()[:160], "admin")
     await push_notification(
         user_id, "wallet", f"{inr(body.amount)} bonus added 🎁",
         f"{inr(body.amount)} bonus cash is in your account. Use it on entry fees — it is not withdrawable.",

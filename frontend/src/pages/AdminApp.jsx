@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from ".
 import { toast } from "sonner";
 import { Baseball as CricketBall, SignOut, Users, Ticket, Receipt, CurrencyInr, Plus, Trash, Check, X, Trophy, Eye, ChartBar, Gear, PencilSimple, MagnifyingGlass, UploadSimple, Flag, ShieldCheck, Scroll, FirstAid, Coins } from "@phosphor-icons/react";
 import { Switch } from "../components/ui/switch";
+import { TurfLogo } from "../components/turf";
 import { QRCodeSVG } from "qrcode.react";
 import { useNavigate } from "react-router-dom";
 import AdminFantasy from "./AdminFantasy";
@@ -66,9 +67,8 @@ export default function AdminApp() {
     <div className="min-h-screen bg-zinc-100 flex" data-testid="admin-app">
       <aside className="w-60 bg-white border-r border-zinc-200 sticky top-0 h-screen flex flex-col overflow-y-auto">
         <div className="p-5 border-b border-zinc-100">
-          <div className="flex items-center gap-2 font-heading font-extrabold text-lg text-zinc-950">
-            <CricketBall weight="fill" className="text-emerald-600" size={24} />
-            PitchPlay
+          <div className="flex items-center gap-2">
+            <TurfLogo mark={26} size="text-lg" testid="admin-brand" />
           </div>
           <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-orange-600">Admin console</div>
         </div>
@@ -408,7 +408,7 @@ function EntriesPanel() {
                 <TableCell><div className="font-semibold text-zinc-800">{e.contest_title}</div></TableCell>
                 <TableCell className="tabular">
                   <div className="font-bold">{e.payment_method === "coins" ? <span className="text-amber-600">{coinsFmt(e.paid_coins || e.entry_fee)} coins</span> : money(e.entry_fee)}</div>
-                  <div className="text-xs text-zinc-500">{e.payment_method === "wallet" ? "Paid from wallet" : e.payment_method === "coins" ? `Paid with Pitch Coins${e.plus_discount ? ` · Plus −${money(e.plus_discount)}` : ""}` : <>UTR: {e.utr || "—"}</>}</div>
+                  <div className="text-xs text-zinc-500">{e.payment_method === "wallet" ? "Paid from wallet" : e.payment_method === "coins" ? `Paid with Sapna Coins${e.plus_discount ? ` · Plus −${money(e.plus_discount)}` : ""}` : <>UTR: {e.utr || "—"}</>}</div>
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={e.status} />
