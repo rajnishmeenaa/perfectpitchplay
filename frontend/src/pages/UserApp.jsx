@@ -760,7 +760,8 @@ function ContestCard({ contest, onJoin, onFantasy }) {
             {firstWin != null && <span>1st <b className="text-zinc-800">{money(firstWin)}</b></span>}
             {ranks.length > 1 && <span className="text-zinc-300">·</span>}
             {ranks.length > 1 && <span>Top {ranks.length} win</span>}
-            {ranks.length <= 1 && <span>{taken.toLocaleString("en-IN")} playing</span>}
+            {firstWin != null && <span className="text-zinc-300">·</span>}
+            <span>{taken.toLocaleString("en-IN")} playing</span>
           </div>
 
           {spots > 0 && (
