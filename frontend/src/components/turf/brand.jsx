@@ -22,8 +22,8 @@ export function TurfMark({ size = 34, rounded = 28, className = "", testid = "tu
     >
       <defs>
         <linearGradient id="turfTile" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor={TURF.inkSoft} />
-          <stop offset="1" stopColor={TURF.ink} />
+          <stop offset="0" stopColor={TURF.airRaised} />
+          <stop offset="1" stopColor={TURF.air} />
         </linearGradient>
         <linearGradient id="turfBall" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor={TURF.fire} />
@@ -31,12 +31,12 @@ export function TurfMark({ size = 34, rounded = 28, className = "", testid = "tu
           <stop offset="1" stopColor={TURF.redDeep} />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="126" height="126" rx={rounded} fill="url(#turfTile)" stroke={TURF.inkLine} strokeWidth="2" />
-      <path d="M18 98 L52 64" stroke={TURF.neon} strokeWidth="7" strokeLinecap="round" opacity="0.9" />
-      <path d="M26 108 L64 70" stroke={TURF.neon} strokeWidth="4" strokeLinecap="round" opacity="0.45" />
+      <rect x="1" y="1" width="126" height="126" rx={rounded} fill="url(#turfTile)" stroke={TURF.airLine} strokeWidth="2" />
+      <path d="M18 98 L52 64" stroke={TURF.neonAir} strokeWidth="7" strokeLinecap="round" opacity="0.9" />
+      <path d="M26 108 L64 70" stroke={TURF.neonAir} strokeWidth="4" strokeLinecap="round" opacity="0.45" />
       <circle cx="80" cy="50" r="29" fill="url(#turfBall)" />
-      <path d="M63 32 C73 44 73 56 65 68" stroke={TURF.ink} strokeWidth="4" fill="none" strokeLinecap="round" />
-      <path d="M98 32 C88 44 88 56 96 68" stroke={TURF.ink} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <path d="M63 32 C73 44 73 56 65 68" stroke={TURF.air} strokeWidth="4" fill="none" strokeLinecap="round" />
+      <path d="M98 32 C88 44 88 56 96 68" stroke={TURF.air} strokeWidth="4" fill="none" strokeLinecap="round" />
       <rect x="20" y="112" width="88" height="5" rx="2.5" fill={TURF.red} opacity="0.9" />
     </svg>
   );
@@ -46,7 +46,7 @@ export function TurfMark({ size = 34, rounded = 28, className = "", testid = "tu
 export function TurfWordmark({ size = "text-xl", accent = "Pitch", rest = "Play", className = "" }) {
   return (
     <span className={`font-heading font-extrabold uppercase tracking-tight ${size} ${className}`} data-testid="turf-wordmark">
-      <span className="text-zinc-50">{accent}</span>
+      <span className="text-zinc-950">{accent}</span>
       <span className="text-turf">{rest}</span>
     </span>
   );

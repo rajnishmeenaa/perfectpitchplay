@@ -361,12 +361,12 @@ function LiveCenterPanel({ match, onMatchChanged }) {
       </div>
 
       {(live.innings || []).length > 0 && (
-        <div className="bg-ink text-white rounded-lg p-5 border border-ink-line" data-testid="admin-live-preview">
+        <div className="turf-air rounded-lg p-5" data-testid="admin-live-preview">
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">What users see{live.auto_live ? " · auto-refresh on" : ""}</div>
           <div className="text-sm font-bold mt-1" data-testid="admin-live-status">{live.status_text || "no status line"}</div>
           <div className="flex flex-wrap gap-2 mt-3">
             {live.innings.map((r, i) => (
-              <div key={`${r.innings}-${i}`} className="bg-ink-card rounded-md px-3 py-2 border border-ink-line">
+              <div key={`${r.innings}-${i}`} className="bg-ink-850 rounded-md px-3 py-2 border border-ink-800">
                 <div className="text-[10px] uppercase tracking-widest text-zinc-400">{r.innings || `Innings ${i + 1}`}</div>
                 <div className="text-lg font-extrabold tabular">{r.runs}/{r.wickets}</div>
                 {r.overs ? <div className="text-[11px] text-zinc-400 tabular">{r.overs} ov</div> : null}
@@ -923,7 +923,7 @@ function ScorecardPanel({ match, onMatchChanged }) {
                   <TableCell key={k} className="p-1">
                     {k === "out" ? (
                       <button type="button" onClick={() => upd(r.player_id, "out", !r.out)} title="Dismissed"
-                        className={`w-full h-7 rounded text-[10px] font-extrabold ${r.out ? "bg-red-100 text-red-700" : "bg-zinc-50 text-zinc-300"}`} data-testid={`out-${r.player_id}`}>
+                        className={`w-full h-7 rounded text-[10px] font-extrabold ${r.out ? "bg-red-100 text-red-700" : "bg-zinc-100 text-zinc-500"}`} data-testid={`out-${r.player_id}`}>
                         {r.out ? "✓" : "—"}
                       </button>
                     ) : (

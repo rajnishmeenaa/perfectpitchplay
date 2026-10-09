@@ -133,7 +133,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
         <Button
           type="submit"
           disabled={busy}
-          className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
+          className="w-full h-11 bg-turf hover:bg-turf-fire text-white font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
           data-testid="otp-send-btn"
         >
           <ChatCenteredText size={18} weight="bold" className="mr-2" />
@@ -165,7 +165,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
         <Button
           type="submit"
           disabled={busy}
-          className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
+          className="w-full h-11 bg-turf hover:bg-turf-fire text-white font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
           data-testid="otp-verify-btn"
         >
           {busy ? "Checking…" : "Verify and continue"}
@@ -225,7 +225,7 @@ export default function OtpAuth({ onSignedIn, invite = "" }) {
       <Button
         type="submit"
         disabled={busy}
-        className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
+        className="w-full h-11 bg-turf hover:bg-turf-fire text-white font-bold text-base rounded-md shadow-glow-turf active:scale-[0.98] transition-transform"
         data-testid="otp-signup-btn"
       >
         {busy ? "Creating…" : "Create my account"}

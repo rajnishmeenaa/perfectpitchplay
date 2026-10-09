@@ -4071,8 +4071,8 @@ async def season_stats(user=Depends(get_current_user)):
 
 
 # ---------- App release info (drives the in-app update banner) ----------
-APP_VERSION_DEFAULTS = {"version_code": 8, "version_name": "1.7.0", "apk_url": "",
-                        "notes": "Pitch Coins: join contests with coins, coin store, Plus perks",
+APP_VERSION_DEFAULTS = {"version_code": 9, "version_name": "1.8.0", "apk_url": "",
+                        "notes": "New look: Dream11-grade contest lobby, live match centre, coin store",
                         "force_update": False}
 
 

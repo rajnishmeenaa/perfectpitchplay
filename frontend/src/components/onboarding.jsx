@@ -87,13 +87,13 @@ const STEPS = [
     icon: Flag,
     title: "Build your XI",
     body: "11 players, 100 credits. Captain scores 2x, vice-captain 1.5x. Auto-pick ranks the squad for you if you're short on time.",
-    accent: "text-neon-bright",
+    accent: "text-neon",
   },
   {
     icon: Trophy,
     title: "Watch live, get paid",
     body: "Ball-by-ball centre with your rank after every over. When the admin settles the contest, winnings land in your wallet for UPI withdrawal.",
-    accent: "text-trophy-light",
+    accent: "text-trophy-dark",
   },
 ];
 
@@ -136,7 +136,7 @@ export function OnboardingTour({ open, onClose }) {
             <Button
               size="sm"
               onClick={() => (last ? onClose() : setI(i + 1))}
-              className="rounded-full bg-turf px-5 text-ink font-extrabold hover:bg-turf-fire shadow-glow-turf active:scale-95 transition-transform"
+              className="rounded-full bg-turf px-5 text-white font-extrabold hover:bg-turf-fire shadow-glow-turf active:scale-95 transition-transform"
               data-testid="onboarding-next"
             >
               {last ? "Enter the lobby" : "Next"}

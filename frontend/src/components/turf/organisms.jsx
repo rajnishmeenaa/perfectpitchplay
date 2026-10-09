@@ -55,8 +55,8 @@ export function MatchDashboard({
       >
         {soon.length === 0 && !live.length ? (
           <TurfCard className="p-6 text-center">
-            <ShieldCheck size={26} weight="duotone" className="mx-auto text-zinc-600" />
-            <div className="font-heading text-[15px] font-extrabold text-zinc-200 mt-2">No fixture announced yet</div>
+            <ShieldCheck size={26} weight="duotone" className="mx-auto text-zinc-300" />
+            <div className="font-heading text-[15px] font-extrabold text-zinc-900 mt-2">No fixture announced yet</div>
             <p className="text-[12px] text-zinc-500 mt-1">The organiser publishes a match with both squads, then contests open here.</p>
           </TurfCard>
         ) : (
@@ -151,7 +151,7 @@ export function ContestLobby({ contests, onJoin, joinedOf, filter, onFilter, sor
             value={activeSort}
             onChange={(e) => setSort(e.target.value)}
             data-testid="lobby-sort"
-            className="rounded-md border border-ink-line bg-ink-card text-[12px] font-bold text-zinc-200 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-turf"
+            className="rounded-md border border-ink-line bg-white text-[12px] font-bold text-zinc-700 px-2 py-1 focus:outline-none focus:ring-2 focus:ring-turf"
           >
             {SORTS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
@@ -168,8 +168,8 @@ export function ContestLobby({ contests, onJoin, joinedOf, filter, onFilter, sor
       {visible.length === 0 ? (
         empty || (
           <TurfCard className="p-8 text-center mt-4">
-            <Users size={26} weight="duotone" className="mx-auto text-zinc-600" />
-            <div className="font-heading text-[15px] font-extrabold text-zinc-200 mt-2">Nothing in this filter</div>
+            <Users size={26} weight="duotone" className="mx-auto text-zinc-300" />
+            <div className="font-heading text-[15px] font-extrabold text-zinc-900 mt-2">Nothing in this filter</div>
             <p className="text-[12px] text-zinc-500 mt-1">Try All contests, or pick another match above.</p>
           </TurfCard>
         )
@@ -184,7 +184,7 @@ export function ContestLobby({ contests, onJoin, joinedOf, filter, onFilter, sor
   );
 }
 
-const LINES = { BOWL: "text-neon", AR: "text-trophy-light", BAT: "text-sky-300", WK: "text-violet-300" };
+const LINES = { BOWL: "text-neon", AR: "text-trophy-dark", BAT: "text-sky-600", WK: "text-violet-600" };
 
 /**
  * TEAM CREATION — the pitch view. Four role lines on mowed turf; tapping a tile
@@ -207,7 +207,7 @@ export function PitchField({ players, pickedIds = [], captain, vice, onToggle, b
 
   return (
     <div className="turf-pitch rounded-turf border border-ink-line overflow-hidden" data-testid="pitch-field">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-ink-950/70 border-b border-ink-line">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-white/85 backdrop-blur border-b border-ink-line">
         <div className="flex items-center gap-2">
           <TurfNum tone={used === 11 ? "neon" : "brand"} className="text-[15px]">{used}/11</TurfNum>
           <span className="turf-eyebrow">picked</span>
@@ -248,9 +248,9 @@ export function PitchField({ players, pickedIds = [], captain, vice, onToggle, b
                     >
                       <span className="relative grid place-items-center">
                         <span className={`w-11 h-11 rounded-full grid place-items-center border-2 font-heading font-extrabold text-[13px] transition-colors ${
-                          out ? "border-ink-line bg-ink-800 text-zinc-600"
+                          out ? "border-zinc-200 bg-zinc-100 text-zinc-400"
                             : on ? "border-turf bg-turf text-white shadow-glow-turf"
-                            : "border-ink-line bg-ink-card text-zinc-300"
+                            : "border-ink-line bg-white text-zinc-600 shadow-card"
                         }`} style={on ? { borderColor: TURF.red, backgroundColor: TURF.red } : undefined}>
                           {(p.name || "?").charAt(0).toUpperCase()}
                         </span>
@@ -258,7 +258,7 @@ export function PitchField({ players, pickedIds = [], captain, vice, onToggle, b
                         {vice === p.id && <span className="absolute -right-1 -bottom-1 grid place-items-center w-4 h-4 rounded-full bg-trophy/80 text-[7px] font-black text-ink-950">VC</span>}
                         {out && <span className="absolute inset-0 grid place-items-center text-turf text-[18px] font-black">×</span>}
                       </span>
-                      <span className="text-[9px] font-bold text-zinc-300 leading-tight text-center truncate w-full">{(p.name || "").split(" ").slice(-1)[0]}</span>
+                      <span className="text-[9px] font-bold text-zinc-700 leading-tight text-center truncate w-full">{(p.name || "").split(" ").slice(-1)[0]}</span>
                       <span className="turf-num text-[9px] text-zinc-500">{p.credits} cr</span>
                     </button>
                   );
@@ -270,12 +270,12 @@ export function PitchField({ players, pickedIds = [], captain, vice, onToggle, b
         })}
       </div>
 
-      <div className="px-4 py-3 bg-ink-950/70 border-t border-ink-line">
+      <div className="px-4 py-3 bg-white/85 backdrop-blur border-t border-ink-line">
         <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-zinc-500">
           <span>Credits used</span>
           <span className="turf-num" data-testid="pitch-credits">{credits.toFixed(1)} / {budget}</span>
         </div>
-        <div className="mt-1.5 h-2 rounded-full bg-ink-700 overflow-hidden">
+        <div className="mt-1.5 h-2 rounded-full bg-zinc-200 overflow-hidden">
           <div
             className={`h-full rounded-full transition-all ${credits > budget ? "bg-turf" : credits > 95 ? "bg-trophy" : "bg-neon"}`}
             style={{ width: `${Math.min(100, (credits / budget) * 100)}%` }}
@@ -299,17 +299,17 @@ export function LeaderRow({ row, rank, delta = 0, me = false, prize, testid }) {
   const place = rank ?? row.rank ?? row.position;
   return (
     <div
-      className={`flex items-center gap-3 px-3 py-2.5 border-b border-ink-line/70 ${me ? "bg-turf/10" : ""}`}
+      className={`flex items-center gap-3 px-3 py-2.5 border-b border-ink-line/70 ${me ? "bg-turf/5" : ""}`}
       data-testid={testid || "leader-row"}
       data-me={me ? "true" : "false"}
     >
       <span className={`shrink-0 w-9 h-9 grid place-items-center rounded-lg font-heading font-extrabold text-[13px] ${
-        place === 1 ? "bg-trophy text-ink-950" : place <= 3 ? "bg-ink-700 text-trophy-light" : "bg-ink-800 text-zinc-400"
+        place === 1 ? "bg-trophy text-ink-950" : place <= 3 ? "bg-trophy-soft text-trophy-dark" : "bg-zinc-100 text-zinc-500"
       }`}>
         {place}
       </span>
       <div className="min-w-0 flex-1">
-        <div className={`text-[13px] font-bold truncate ${me ? "text-turf" : "text-zinc-100"}`} title={row.name || row.user_name}>
+        <div className={`text-[13px] font-bold truncate ${me ? "text-turf" : "text-zinc-950"}`} title={row.name || row.user_name}>
           {row.name || row.user_name || "Anonymous"}{me ? " · you" : ""}
         </div>
         <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-zinc-500">
@@ -345,7 +345,7 @@ export function ChatThread({ messages = [], onSend, busy = false, testid = "cont
   };
   return (
     <TurfCard className="flex flex-col overflow-hidden" testid={testid}>
-      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-line bg-ink-950/60">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-ink-line bg-zinc-50">
         <ChatsCircle size={15} weight="fill" className="text-turf" />
         <span className="turf-eyebrow">Contest chat</span>
         <span className="ml-auto text-[10px] text-zinc-500">{messages.length} message{messages.length === 1 ? "" : "s"}</span>
@@ -356,14 +356,14 @@ export function ChatThread({ messages = [], onSend, busy = false, testid = "cont
         )}
         {messages.map((m) => (
           <div key={m.id} className="flex gap-2" data-testid={`chat-row-${m.id}`}>
-            <span className="w-7 h-7 shrink-0 grid place-items-center rounded-lg bg-ink-700 text-[10px] font-extrabold text-zinc-300">
+            <span className="w-7 h-7 shrink-0 grid place-items-center rounded-lg bg-zinc-100 text-[10px] font-extrabold text-zinc-600">
               {(m.name || "?").charAt(0).toUpperCase()}
             </span>
             <div className="min-w-0">
               <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">
                 {m.name} · {new Date(m.at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
               </div>
-              <div className="text-[12.5px] text-zinc-100 leading-snug break-words">{m.text}</div>
+              <div className="text-[12.5px] text-zinc-900 leading-snug break-words">{m.text}</div>
             </div>
           </div>
         ))}
@@ -376,7 +376,7 @@ export function ChatThread({ messages = [], onSend, busy = false, testid = "cont
           maxLength={240}
           placeholder="Say something about this contest"
           data-testid="chat-input"
-          className="flex-1 min-w-0 rounded-full border border-ink-line bg-ink-soft px-3.5 py-2 text-[13px] text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-turf"
+          className="flex-1 min-w-0 rounded-full border border-ink-line bg-zinc-50 px-3.5 py-2 text-[13px] text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-turf"
         />
         <button
           type="button"
@@ -395,7 +395,7 @@ export function ChatThread({ messages = [], onSend, busy = false, testid = "cont
 /** Compact live-state header used above a leaderboard or ticker. */
 export function LiveStrip({ match, score, right }) {
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 rounded-turf border border-ink-line bg-ink-950" data-testid="live-strip">
+    <div className="flex items-center gap-3 px-4 py-2.5 rounded-turf border border-ink-800 bg-ink-950" data-testid="live-strip">
       <TurfLiveDot />
       <div className="min-w-0 flex-1">
         <div className="text-[12px] font-bold text-zinc-100 truncate">{match?.team_a_short} vs {match?.team_b_short}</div>

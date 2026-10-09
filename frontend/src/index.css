@@ -5,12 +5,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800;900&family=Barlow+Condensed:wght@500;600;700;800;900&display=swap');
 
 /* ============================================================================
-   TURF — the app's atomic design system (web layer).
-   Colour tokens live in tailwind.config.js: turf-* brand red, ink-* charcoal,
-   neon-* live/positive, trophy-* prize, zinc-* neutral. Screens use components
-   from src/components/turf rather than raw hex values.
-   This file carries the CSS variables behind the shadcn primitives plus the
-   unlayered remap that lifts the old light-theme classes onto charcoal.
+   TURF — the app's atomic design system (web layer), v1.8 light direction.
+   Colour tokens live in tailwind.config.js: turf-* brand red, ink-* neutral
+   surfaces, neon-* pitch green (the entry action), trophy-* prize, zinc-* greys.
+
+   Text-shade rule, so a class means the same thing everywhere:
+     zinc-50/100/200/300  → light text, use INSIDE a dark broadcast panel only
+     zinc-400             → the neutral that reads on both, fine anywhere
+     zinc-500/600/700     → muted / secondary text on white
+     zinc-800/900/950     → headings on white
+   Screens use components from src/components/turf rather than raw hex values.
    ========================================================================== */
 
 body {
@@ -18,8 +22,8 @@ body {
     font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #05060A;
-    color: #E7ECF3;
+    background-color: #F3F5F8;
+    color: #141A21;
 }
 
 .font-heading { font-family: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.01em; }
@@ -34,27 +38,27 @@ code {
 
 @layer base {
     :root {
-        --background: 225 33% 3%;
-        --foreground: 213 24% 91%;
-        --card: 222 22% 9%;
-        --card-foreground: 213 24% 91%;
-        --popover: 223 25% 6%;
-        --popover-foreground: 213 24% 91%;
+        --background: 216 20% 97%;
+        --foreground: 213 25% 10%;
+        --card: 0 0% 100%;
+        --card-foreground: 213 25% 10%;
+        --popover: 0 0% 100%;
+        --popover-foreground: 213 25% 10%;
         --primary: 357 85% 52%;
         --primary-foreground: 0 0% 100%;
-        --secondary: 221 20% 15%;
-        --secondary-foreground: 213 24% 91%;
-        --muted: 221 18% 14%;
-        --muted-foreground: 216 13% 60%;
+        --secondary: 216 22% 95%;
+        --secondary-foreground: 214 21% 22%;
+        --muted: 216 22% 95%;
+        --muted-foreground: 215 10% 44%;
         --accent: 357 85% 52%;
         --accent-foreground: 0 0% 100%;
         --destructive: 0 72% 51%;
         --destructive-foreground: 0 0% 100%;
-        --border: 220 17% 19%;
-        --input: 220 16% 22%;
+        --border: 216 16% 89%;
+        --input: 216 16% 86%;
         --ring: 357 85% 52%;
         --radius: 0.625rem;
-        --chart-1: 148 82% 48%;
+        --chart-1: 152 72% 42%;
         --chart-2: 43 88% 57%;
         --chart-3: 357 85% 52%;
         --chart-4: 38 92% 50%;
@@ -71,37 +75,6 @@ code {
     }
 }
 
-/* Light surfaces from the old theme become charcoal Turf cards (unlayered beats layered). */
-.bg-white { background-color: hsl(222 22% 9%); }
-.bg-white\/90 { background-color: hsl(222 22% 9% / 0.9); }
-.bg-white\/95 { background-color: hsl(222 22% 9% / 0.95); }
-.bg-white\/80 { background-color: hsl(222 22% 9% / 0.8); }
-.bg-white\/70 { background-color: hsl(222 22% 9% / 0.7); }
-.bg-white\/60 { background-color: hsl(222 22% 9% / 0.6); }
-.bg-white\/50 { background-color: hsl(222 22% 9% / 0.5); }
-.bg-white\/40 { background-color: hsl(222 22% 9% / 0.4); }
-.bg-white\/30 { background-color: hsl(222 22% 9% / 0.3); }
-.bg-white\/20 { background-color: hsl(222 22% 9% / 0.2); }
-.bg-white\/10 { background-color: hsl(222 22% 9% / 0.1); }
-.bg-white\/5 { background-color: hsl(222 22% 9% / 0.05); }
-.hover\:bg-white:hover { background-color: hsl(222 22% 9%); }
-
-/* Old light greys used as page backgrounds become the ink canvas. */
-.bg-zinc-50 { background-color: #0E1117; }
-.bg-zinc-100 { background-color: #0A0C11; }
-.hover\:bg-zinc-50:hover { background-color: #14181F; }
-.hover\:bg-zinc-100:hover { background-color: #12151C; }
-
-/* White text stays white (brand `white` maps to card color for surfaces). */
-.text-white { color: #F7FAFD; }
-.text-white\/90 { color: rgb(247 250 253 / 0.9); }
-.text-white\/80 { color: rgb(247 250 253 / 0.8); }
-.text-white\/70 { color: rgb(247 250 253 / 0.7); }
-.text-white\/60 { color: rgb(247 250 253 / 0.6); }
-.text-white\/50 { color: rgb(247 250 253 / 0.5); }
-.fill-white { fill: #F7FAFD; }
-.stroke-white { stroke: #F7FAFD; }
-
 /* Selection */
 ::selection {
     background: #ED1B24;
@@ -111,8 +84,8 @@ code {
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #272E3A; border-radius: 8px; }
-::-webkit-scrollbar-thumb:hover { background: #3A4352; }
+::-webkit-scrollbar-thumb { background: #C9D0D9; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #7A838F; }
 ::-webkit-scrollbar-thumb:active { background: #ED1B24; }
 
 /* Strips that must not show a scrollbar (sport selector, filters, carousels). */
@@ -124,32 +97,33 @@ code {
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E");
 }
 
-/* Full-height backdrop used on dashboards and the landing page. */
+/* Full-height backdrop used on dashboards and the landing page: floodlights on
+   a light ground, so the white cards sit on a slightly warm-lit field. */
 .stadium-bg {
     background:
-        radial-gradient(1100px 500px at 85% -10%, rgba(237, 27, 36, 0.18), transparent 60%),
-        radial-gradient(900px 480px at -10% 110%, rgba(43, 245, 124, 0.09), transparent 55%),
-        #05060A;
+        radial-gradient(1100px 520px at 88% -12%, rgba(237, 27, 36, 0.10), transparent 62%),
+        radial-gradient(900px 480px at -8% 108%, rgba(10, 122, 68, 0.10), transparent 58%),
+        linear-gradient(180deg, #F7F9FB 0%, #EEF1F5 100%);
 }
 
-/* Glassy card surface */
+/* Frost card surface (used on the landing "how it works" tiles). */
 .glass {
-    background: hsl(222 22% 9% / 0.72);
+    background: rgba(255, 255, 255, 0.82);
     backdrop-filter: blur(10px);
-    border: 1px solid #272E3A;
+    border: 1px solid #E4E8EE;
 }
 
-/* Trophy gradient text for money / hero moments */
+/* Trophy gradient text for money / hero moments. Reads on a dark surface. */
 .text-turf-grad {
-    background: linear-gradient(120deg, #FFD35C 0%, #F2B632 45%, #B97F14 100%);
+    background: linear-gradient(120deg, #FFE08A 0%, #F2B632 46%, #B97F14 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
 }
 
-/* Brand red treatment for scoreboard headlines and prize callouts. */
+/* Brand red treatment for scoreboard headlines and prize callouts on light. */
 .text-turf-fire {
-    background: linear-gradient(100deg, #FF4B52 0%, #ED1B24 46%, #B01018 100%);
+    background: linear-gradient(100deg, #ED1B24 0%, #C6121A 58%, #8E0C12 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -157,7 +131,7 @@ code {
 
 /* Skeleton shimmer block */
 .shimmer {
-    background: linear-gradient(90deg, #12151C 25%, #1E232D 50%, #12151C 75%);
+    background: linear-gradient(90deg, #EDF0F4 25%, #F7F9FB 50%, #EDF0F4 75%);
     background-size: 800px 100%;
     animation: shimmer 2.4s linear infinite;
 }
@@ -169,15 +143,15 @@ code {
 
 /* ---- Turf component classes (molecules/organisms build on these) ---------- */
 
-/* Card: charcoal surface, 1px line, brand edge available via .turf-flag */
+/* Card: white surface, 1px hairline, layered low shadow. Brand edge via .turf-flag */
 .turf-card {
-    background: linear-gradient(180deg, #14181F 0%, #101319 100%);
-    border: 1px solid #272E3A;
+    background: #FFFFFF;
+    border: 1px solid #E4E8EE;
     border-radius: 0.875rem;
-    box-shadow: 0 10px 28px -18px rgba(0, 0, 0, 0.9);
+    box-shadow: 0 1px 2px rgba(11, 14, 19, 0.05), 0 10px 24px -16px rgba(11, 14, 19, 0.18);
 }
 
-/* Leading colour bar on the card edge — red (default), neon, or trophy. */
+/* Leading colour bar on the card edge — red (default), pitch green, or gold. */
 .turf-flag { position: relative; overflow: hidden; }
 .turf-flag::before {
     content: "";
@@ -186,10 +160,10 @@ code {
     width: 4px;
     background: linear-gradient(180deg, #FF4B52, #ED1B24 55%, #B01018);
 }
-.turf-flag.is-neon::before { background: linear-gradient(180deg, #6BFFA8, #2BF57C 55%, #0B7A43); }
+.turf-flag.is-neon::before { background: linear-gradient(180deg, #4ADE80, #0A7A44 55%, #065C33); }
 .turf-flag.is-trophy::before { background: linear-gradient(180deg, #FFD35C, #F2B632 55%, #B97F14); }
 
-/* Primary action: brand red, condensed uppercase, tabular label. */
+/* Primary action: brand red, condensed uppercase. */
 .turf-cta {
     background: linear-gradient(180deg, #FF3640 0%, #ED1B24 52%, #C6121A 100%);
     color: #fff;
@@ -197,24 +171,40 @@ code {
     font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 10px 26px -16px rgba(237, 27, 36, 0.95);
+    border: 1px solid rgba(142, 12, 18, 0.35);
+    box-shadow: 0 8px 18px -10px rgba(237, 27, 36, 0.55);
 }
-.turf-cta:hover { filter: brightness(1.06); }
+.turf-cta:hover { filter: brightness(1.05); }
 .turf-cta:active { transform: translateY(1px); }
-.turf-cta:disabled { filter: grayscale(0.55) brightness(0.75); box-shadow: none; }
+.turf-cta:disabled { filter: grayscale(0.6) brightness(0.9); box-shadow: none; opacity: 0.6; }
 
-/* Secondary action on charcoal. */
+/* The entry action: pitch green. Same shape as .turf-cta so a row reads
+   "brand red = identity, green = put money in". */
+.turf-join {
+    background: linear-gradient(180deg, #16A34A 0%, #0A7A44 54%, #065C33 100%);
+    color: #fff;
+    font-family: 'Barlow Condensed', ui-sans-serif, sans-serif;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid rgba(6, 92, 51, 0.35);
+    box-shadow: 0 8px 18px -10px rgba(10, 122, 68, 0.5);
+}
+.turf-join:hover { filter: brightness(1.06); }
+.turf-join:active { transform: translateY(1px); }
+.turf-join:disabled { filter: grayscale(0.6) brightness(0.95); box-shadow: none; opacity: 0.55; }
+
+/* Secondary action on white. */
 .turf-ghost {
-    background: #171B23;
-    border: 1px solid #272E3A;
-    color: #D9E1EA;
+    background: #FFFFFF;
+    border: 1px solid #D6DBE3;
+    color: #39424C;
     font-family: 'Barlow Condensed', ui-sans-serif, sans-serif;
     font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
 }
-.turf-ghost:hover { border-color: #ED1B24; color: #fff; }
+.turf-ghost:hover { border-color: #ED1B24; color: #C6121A; }
 
 /* Eyebrow label above a section or stat block. */
 .turf-eyebrow {
@@ -224,7 +214,7 @@ code {
     line-height: 0.875rem;
     letter-spacing: 0.16em;
     text-transform: uppercase;
-    color: #93A0B0;
+    color: #666F7B;
 }
 
 /* Scoreboard numerals (countdowns, prize pools, ranks). */
@@ -235,12 +225,53 @@ code {
     letter-spacing: -0.01em;
 }
 
+/* Money: the currency glyph steps back so the amount is what lands. Only ever
+   applied to strings that begin with the rupee sign (money / shortMoney). */
+.turf-money { display: inline-block; }
+.turf-money::first-letter {
+    font-size: 0.7em;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
 /* Mowed-turf texture behind the team-creation pitch. */
 .turf-pitch {
     background:
-        repeating-linear-gradient(180deg, rgba(43, 245, 124, 0.075) 0 34px, rgba(43, 245, 124, 0.02) 34px 68px),
-        radial-gradient(120% 80% at 50% 0%, rgba(43, 245, 124, 0.10), transparent 70%),
-        #080B0E;
+        repeating-linear-gradient(180deg, rgba(10, 122, 68, 0.10) 0 34px, rgba(10, 122, 68, 0.025) 34px 68px),
+        radial-gradient(120% 80% at 50% 0%, rgba(10, 122, 68, 0.12), transparent 70%),
+        #EFF5EF;
+}
+
+/* THE SIGNATURE: a strip of freshly cut outfield used as a card's money band.
+   White condensed numerals sit on it, so the pot is the loudest thing in the row. */
+.turf-ground {
+    background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.13) 0 20px, rgba(255, 255, 255, 0.03) 20px 40px),
+        linear-gradient(100deg, #ED1B24 0%, #C6121A 52%, #8E0C12 100%);
+    color: #fff;
+    border-radius: 0.625rem;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+/* Same band in gold for a settled / winner moment. */
+.turf-ground.is-trophy {
+    background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 20px, rgba(255, 255, 255, 0.04) 20px 40px),
+        linear-gradient(100deg, #F2B632 0%, #B97F14 100%);
+    color: #231A05;
+}
+/* And in green when the band is about entry rather than prize. */
+.turf-ground.is-entry {
+    background:
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.13) 0 20px, rgba(255, 255, 255, 0.03) 20px 40px),
+        linear-gradient(100deg, #16A34A 0%, #0A7A44 56%, #065C33 100%);
+    color: #fff;
+}
+
+/* Broadcast panel: the live centre and the winners board stay dark on purpose. */
+.turf-air {
+    background: linear-gradient(180deg, #141A21 0%, #0B0E13 100%);
+    border: 1px solid #262E38;
+    color: #E7ECF3;
 }
 
 /* Horizontally scrolling sport / filter strip. */
@@ -253,137 +284,22 @@ code {
 }
 .turf-strip > * { scroll-snap-align: start; flex: 0 0 auto; }
 
-/* ---- Semantic soft-badge remap: light tints become charcoal tints ---- */
-.bg-amber-50 { background-color: rgb(242 182 50 / 0.12); }
-.bg-amber-100 { background-color: rgb(242 182 50 / 0.18); }
-.bg-emerald-50 { background-color: rgb(43 245 124 / 0.10); }
-.bg-emerald-100 { background-color: rgb(43 245 124 / 0.16); }
-.bg-emerald-200 { background-color: rgb(43 245 124 / 0.22); }
-.bg-red-50 { background-color: rgb(237 27 36 / 0.12); }
-.bg-red-100 { background-color: rgb(237 27 36 / 0.18); }
-.bg-red-200 { background-color: rgb(237 27 36 / 0.24); }
-.bg-blue-50 { background-color: rgb(96 165 250 / 0.12); }
-.bg-blue-100 { background-color: rgb(96 165 250 / 0.18); }
-.bg-sky-50 { background-color: rgb(56 189 248 / 0.12); }
-.bg-sky-100 { background-color: rgb(56 189 248 / 0.18); }
-.bg-sky-200 { background-color: rgb(56 189 248 / 0.24); }
-.bg-rose-50 { background-color: rgb(244 63 94 / 0.12); }
-.bg-rose-100 { background-color: rgb(244 63 94 / 0.18); }
-.bg-rose-200 { background-color: rgb(244 63 94 / 0.24); }
-.bg-yellow-50 { background-color: rgb(234 179 8 / 0.12); }
-.bg-yellow-100 { background-color: rgb(234 179 8 / 0.18); }
-.bg-yellow-200 { background-color: rgb(234 179 8 / 0.24); }
-.bg-orange-50 { background-color: rgb(251 146 60 / 0.12); }
-.bg-orange-100 { background-color: rgb(251 146 60 / 0.18); }
-.bg-orange-200 { background-color: rgb(251 146 60 / 0.24); }
-.bg-orange-50\/50 { background-color: rgb(251 146 60 / 0.06); }
-.bg-violet-50 { background-color: rgb(167 139 250 / 0.12); }
-.bg-violet-100 { background-color: rgb(167 139 250 / 0.18); }
-.bg-violet-200 { background-color: rgb(167 139 250 / 0.24); }
-
-.hover\:bg-amber-50:hover { background-color: rgb(242 182 50 / 0.12); }
-.hover\:bg-amber-100:hover { background-color: rgb(242 182 50 / 0.18); }
-.hover\:bg-emerald-50:hover { background-color: rgb(43 245 124 / 0.12); }
-.hover\:bg-emerald-100:hover { background-color: rgb(43 245 124 / 0.18); }
-.hover\:bg-red-50:hover { background-color: rgb(237 27 36 / 0.14); }
-.hover\:bg-red-100:hover { background-color: rgb(237 27 36 / 0.2); }
-.hover\:bg-sky-50:hover { background-color: rgb(56 189 248 / 0.12); }
-.hover\:bg-sky-100:hover { background-color: rgb(56 189 248 / 0.18); }
-.hover\:bg-rose-50:hover { background-color: rgb(244 63 94 / 0.12); }
-.hover\:bg-rose-100:hover { background-color: rgb(244 63 94 / 0.18); }
-.hover\:bg-yellow-50:hover { background-color: rgb(234 179 8 / 0.12); }
-.hover\:bg-yellow-100:hover { background-color: rgb(234 179 8 / 0.18); }
-.hover\:bg-orange-50:hover { background-color: rgb(251 146 60 / 0.12); }
-.hover\:bg-orange-100:hover { background-color: rgb(251 146 60 / 0.18); }
-.hover\:bg-violet-50:hover { background-color: rgb(167 139 250 / 0.12); }
-.hover\:bg-violet-100:hover { background-color: rgb(167 139 250 / 0.18); }
-
-.text-amber-700 { color: #FFD35C; }
-.text-amber-800 { color: #FFE08A; }
-.text-amber-900 { color: #FFF1C7; }
-.text-emerald-500 { color: #2BF57C; }
-.text-emerald-600 { color: #35F58A; }
-.text-emerald-700 { color: #6BFFA8; }
-.text-emerald-800 { color: #A5FFC8; }
-.text-emerald-900 { color: #D6FFE6; }
-.text-red-500 { color: #FF4B52; }
-.text-red-600 { color: #FF6A70; }
-.text-red-700 { color: #FF8A8F; }
-.text-red-800 { color: #FFBDC0; }
-.text-red-900 { color: #FFD9DB; }
-.text-blue-700 { color: #A7C9FD; }
-.text-blue-800 { color: #C7DBFE; }
-.text-blue-900 { color: #E1EDFF; }
-.text-sky-700 { color: #8FE3FF; }
-.text-sky-800 { color: #BAEEFF; }
-.text-sky-900 { color: #DDF6FF; }
-.text-rose-700 { color: #FFAEB8; }
-.text-rose-800 { color: #FFCDD3; }
-.text-rose-900 { color: #FFE4E6; }
-.text-yellow-700 { color: #FDE047; }
-.text-yellow-800 { color: #FEF08A; }
-.text-yellow-900 { color: #FEF9C3; }
-.text-orange-700 { color: #FDBA74; }
-.text-orange-800 { color: #FED7AA; }
-.text-orange-900 { color: #FFEDD5; }
-.text-violet-700 { color: #C4B5FD; }
-.text-violet-800 { color: #DDD6FE; }
-.text-violet-900 { color: #EDE9FE; }
-
-.border-amber-100 { border-color: rgb(242 182 50 / 0.24); }
-.border-amber-200 { border-color: rgb(242 182 50 / 0.36); }
-.border-amber-300 { border-color: rgb(242 182 50 / 0.46); }
-.border-emerald-100 { border-color: rgb(43 245 124 / 0.24); }
-.border-emerald-200 { border-color: rgb(43 245 124 / 0.36); }
-.border-emerald-300 { border-color: rgb(43 245 124 / 0.46); }
-.border-emerald-400 { border-color: rgb(43 245 124 / 0.55); }
-.border-red-100 { border-color: rgb(237 27 36 / 0.26); }
-.border-red-200 { border-color: rgb(237 27 36 / 0.38); }
-.border-red-300 { border-color: rgb(237 27 36 / 0.48); }
-.border-blue-100 { border-color: rgb(96 165 250 / 0.24); }
-.border-blue-200 { border-color: rgb(96 165 250 / 0.36); }
-.border-sky-100 { border-color: rgb(56 189 248 / 0.24); }
-.border-sky-200 { border-color: rgb(56 189 248 / 0.36); }
-.border-sky-300 { border-color: rgb(56 189 248 / 0.46); }
-.border-rose-100 { border-color: rgb(244 63 94 / 0.24); }
-.border-rose-200 { border-color: rgb(244 63 94 / 0.36); }
-.border-yellow-100 { border-color: rgb(234 179 8 / 0.24); }
-.border-yellow-200 { border-color: rgb(234 179 8 / 0.36); }
-.border-orange-100 { border-color: rgb(251 146 60 / 0.24); }
-.border-orange-200 { border-color: rgb(251 146 60 / 0.36); }
-.border-violet-100 { border-color: rgb(167 139 250 / 0.24); }
-.border-violet-200 { border-color: rgb(167 139 250 / 0.36); }
-
-.ring-emerald-100 { --tw-ring-color: rgb(43 245 124 / 0.34); }
-
-/* Silver medal chip (zinc-300 bg was remapped near the text zinc-700). */
-.bg-zinc-300 { background-color: #3A4352; }
-
-/* ---- Panels that stay darker than a card (live centre, winners board, pay box) ---- */
-.bg-zinc-950 { background-color: #05060A; }
-.bg-zinc-900 { background-color: #0A0C11; }
-.bg-zinc-800 { background-color: #12151C; }
-.bg-zinc-900\/70 { background-color: rgb(10 12 17 / 0.7); }
-.bg-zinc-900\/60 { background-color: rgb(10 12 17 / 0.6); }
-.bg-zinc-800\/80 { background-color: rgb(18 21 28 / 0.8); }
-.bg-zinc-800\/50 { background-color: rgb(18 21 28 / 0.5); }
-.hover\:bg-zinc-800:hover { background-color: #171B23; }
-.hover\:bg-zinc-700:hover { background-color: #1A1F28; }
-.border-zinc-800 { border-color: #272E3A; }
-.border-zinc-700 { border-color: #3A4352; }
-.divide-zinc-800 > :not([hidden]) ~ :not([hidden]) { border-color: #272E3A; }
-
-/* Light-on-dark text shades (the old theme used these inside dark panels). */
-.text-zinc-50 { color: #FDFEFF; }
-.text-zinc-100 { color: #F6F9FC; }
-.text-zinc-200 { color: #EBF0F5; }
-.text-zinc-300 { color: #D9E1EA; }
-.text-zinc-400 { color: #93A0B0; }
-
-/* Native form controls render dark (selects, number spinners, checkboxes, date pickers). */
-:root { color-scheme: dark; }
-select { background-color: #101319; color: #EBF0F5; }
-option { background-color: #101319; color: #EBF0F5; }
-textarea { background-color: #101319; color: #EBF0F5; }
+/* Native form controls render light (selects, number spinners, date pickers). */
+:root { color-scheme: light; }
+select { background-color: #FFFFFF; color: #141A21; }
+option { background-color: #FFFFFF; color: #141A21; }
+textarea { background-color: #FFFFFF; color: #141A21; }
 input[type="checkbox"] { accent-color: #ED1B24; }
 input[type="radio"] { accent-color: #ED1B24; }
+
+/* Focus is always visible on the brand ring, on light and on dark. */
+.turf-card :focus-visible,
+.turf-air :focus-visible {
+    outline: 2px solid #ED1B24;
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shimmer { animation: none; }
+    * { scroll-behavior: auto !important; }
+}

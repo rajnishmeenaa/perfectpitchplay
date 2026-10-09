@@ -6,7 +6,7 @@
 import { countdownParts, SKIN, STATUS_SKIN, TURF } from "./tokens";
 import { useEffect, useState } from "react";
 
-/** Charcoal card with an optional brand edge. */
+/** White card with an optional brand edge. */
 export function TurfCard({ children, className = "", edge = "", as: Tag = "div", testid, ...rest }) {
   const tone = edge ? `turf-flag ${edge === "brand" ? "" : `is-${edge}`}` : "";
   return (
@@ -71,7 +71,7 @@ export function TurfPill({ children, active = false, onClick, className = "", te
       data-testid={testid}
       data-active={active ? "true" : "false"}
       className={`${base} border disabled:opacity-45 ${
-        active ? "bg-turf text-white border-turf shadow-glow-turf" : "bg-ink-card text-zinc-300 border-ink-line hover:border-turf/50"
+        active ? "bg-turf text-white border-turf shadow-glow-turf" : "bg-ink-card text-zinc-500 border-ink-line hover:border-turf/50 hover:text-zinc-900"
       } ${className}`}
     >
       {children}
@@ -82,7 +82,7 @@ export function TurfPill({ children, active = false, onClick, className = "", te
 /** Brand CTA. Prefer this over a raw button inside Turf molecules. */
 export function TurfButton({ children, onClick, variant = "cta", size = "md", disabled, className = "", testid, type = "button" }) {
   const sizes = { sm: "px-3 py-1.5 text-[12px]", md: "px-4 py-2.5 text-[13px]", lg: "w-full px-5 py-3 text-[15px]" };
-  const skins = { cta: "turf-cta", ghost: "turf-ghost", neon: "bg-neon text-ink-950 hover:bg-neon-bright font-extrabold" };
+  const skins = { cta: "turf-cta", ghost: "turf-ghost", neon: "turf-join" };
   return (
     <button
       type={type}
@@ -109,10 +109,19 @@ export function TurfLiveDot({ label = "LIVE", testid = "turf-live-dot" }) {
   );
 }
 
-/** Scoreboard numerals. */
+/**
+ * Scoreboard numerals. A value that starts with the rupee sign picks up the
+ * money treatment (small ₹, big amount) automatically, so every prize figure in
+ * the app is set the same way without the screens having to ask for it.
+ */
 export function TurfNum({ children, className = "", testid, tone = "" }) {
-  const tones = { brand: "text-turf", neon: "text-neon", trophy: "text-trophy-light", muted: "text-zinc-500" };
-  return <span className={`turf-num ${tones[tone] || "text-zinc-50"} ${className}`} data-testid={testid}>{children}</span>;
+  const tones = { brand: "text-turf", neon: "text-neon", trophy: "text-trophy-dark", muted: "text-zinc-500" };
+  const isMoney = typeof children === "string" && children.trim().startsWith("₹");
+  return (
+    <span className={`turf-num ${isMoney ? "turf-money" : ""} ${tones[tone] || "text-zinc-950"} ${className}`} data-testid={testid}>
+      {children}
+    </span>
+  );
 }
 
 /** One label over one value, the unit every stats row in the app uses. */
@@ -138,7 +147,7 @@ export function TurfMeter({ value, max, tone = "neon", label, testid = "turf-met
           <span className="turf-num">{value} / {max}</span>
         </div>
       )}
-      <div className="h-2 rounded-full bg-ink-700 overflow-hidden">
+      <div className="h-2 rounded-full bg-zinc-200 overflow-hidden">
         <div className={`h-full rounded-full transition-all ${fills[tone] || fills.neon}`} style={{ width: `${pct}%` }} data-testid={`${testid}-fill`} />
       </div>
     </div>
@@ -169,12 +178,12 @@ export function TurfCountdown({ iso, overLabel = "Entries closed", compact = fal
     ? [[parts.d, "d"], [parts.h, "h"], [parts.m, "m"]]
     : [[parts.h, "h"], [parts.m, "m"], [parts.s, "s"]];
   return (
-    <div className={`flex items-center gap-1 ${parts.urgent ? "text-turf" : "text-zinc-200"}`} data-testid={testid}>
+    <div className={`flex items-center gap-1 ${parts.urgent ? "text-turf" : "text-zinc-700"}`} data-testid={testid}>
       {cells.map(([v, unit], i) => (
         <span key={unit + i} className="inline-flex items-baseline gap-0.5">
-          <span className={`turf-num text-[13px] ${parts.urgent ? "text-turf" : "text-zinc-100"}`}>{parts.pad ? parts.pad(v) : v}</span>
+          <span className={`turf-num text-[13px] ${parts.urgent ? "text-turf" : "text-zinc-900"}`}>{parts.pad ? parts.pad(v) : v}</span>
           <span className="text-[9px] font-bold uppercase text-zinc-500">{unit}</span>
-          {i < cells.length - 1 && <span className="text-zinc-600 ml-0.5">:</span>}
+          {i < cells.length - 1 && <span className="text-zinc-400 ml-0.5">:</span>}
         </span>
       ))}
     </div>
@@ -185,10 +194,10 @@ export function TurfCountdown({ iso, overLabel = "Entries closed", compact = fal
 export function TurfCrest({ name, short, size = 26, tone = "neutral", testid }) {
   const letter = ((name || short || "?").trim().charAt(0) || "?").toUpperCase();
   const tones = {
-    neutral: "bg-ink-700 border-ink-line text-zinc-200",
-    brand: "bg-turf/15 border-turf/40 text-turf",
-    neon: "bg-neon/12 border-neon/35 text-neon",
-    trophy: "bg-trophy/15 border-trophy/40 text-trophy-light",
+    neutral: "bg-zinc-100 border-ink-line text-zinc-700",
+    brand: "bg-turf/10 border-turf/30 text-turf",
+    neon: "bg-neon/10 border-neon/30 text-neon",
+    trophy: "bg-trophy/20 border-trophy/40 text-trophy-dark",
   };
   return (
     <span

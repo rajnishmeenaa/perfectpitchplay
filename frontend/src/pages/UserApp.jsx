@@ -21,8 +21,11 @@ import { MoreMenu, AvatarTrigger } from "../components/moreMenu";
 import { CoinStore } from "../components/coinStore";
 import { BottomNav } from "../components/bottomNav";
 import { MatchCarousel } from "../components/matchCarousel";
-import { SportStrip, ContestLobby, TurfCard, TurfMark, SPORTS } from "../components/turf";
+import { SportStrip, ContestLobby, TurfCard, TurfMark, SPORTS, shortMoney } from "../components/turf";
 import { useNavigate } from "react-router-dom";
+
+// Wallet-card backdrop. Ships in public/brand so the Android shell bundles it.
+const PROMO = process.env.PUBLIC_URL + "/brand/promo-ball.jpg";
 
 const StatusBadge = ({ status }) => {
   const map = {
@@ -317,7 +320,7 @@ export default function UserApp() {
             <button
               type="button"
               onClick={() => setTab("contests")}
-              className="h-9 w-9 shrink-0 grid place-items-center rounded-full border border-ink-line bg-ink-card text-zinc-300 active:scale-95"
+              className="h-9 w-9 shrink-0 grid place-items-center rounded-full border border-ink-line bg-white text-zinc-600 hover:border-turf/50 hover:text-turf active:scale-95"
               aria-label="Back to contests"
               data-testid="back-home-btn"
             >
@@ -330,16 +333,16 @@ export default function UserApp() {
         )}
 
         {update && update.latest?.apk_url && (
-          <div className="mb-6 bg-emerald-950 text-white rounded-lg p-4 flex flex-wrap items-center gap-3" data-testid="update-banner">
-            <DownloadSimple size={20} weight="fill" className="text-emerald-400" />
+          <div className="turf-air mb-6 rounded-lg p-4 flex flex-wrap items-center gap-3" data-testid="update-banner">
+            <DownloadSimple size={20} weight="fill" className="text-turf-fire" />
             <div className="min-w-0">
-              <div className="font-bold text-sm">Version {update.latest.version_name} is available</div>
-              <div className="text-[11px] text-emerald-200/80">
+              <div className="font-bold text-sm text-white">Version {update.latest.version_name} is available</div>
+              <div className="text-[11px] text-zinc-400">
                 You are on {update.current.version || update.current.build}{update.latest.notes ? ` · ${update.latest.notes}` : ""}
               </div>
             </div>
             <a href={update.latest.apk_url} target="_blank" rel="noopener noreferrer"
-              className="ml-auto bg-turf hover:bg-emerald-400 text-white font-extrabold text-xs px-4 py-2.5 rounded-full active:scale-95"
+              className="turf-cta ml-auto text-white font-extrabold text-xs px-4 py-2.5 rounded-full active:scale-95"
               data-testid="update-download-btn">
               Update now
             </a>
@@ -356,7 +359,7 @@ export default function UserApp() {
 
             {sport !== "cricket" ? (
               <TurfCard className="mt-4 p-8 text-center" edge="neon" testid="sport-soon">
-                <div className="font-heading text-[17px] font-extrabold uppercase tracking-tight text-zinc-100">
+                <div className="font-heading text-[17px] font-extrabold uppercase tracking-tight text-zinc-950">
                   {(SPORT_LABELS[sport] || sport) + " is not open yet"}
                 </div>
                 <p className="text-[12px] text-zinc-500 mt-1 max-w-sm mx-auto">
@@ -480,40 +483,49 @@ export default function UserApp() {
 
           <TabsContent value="wallet" className="mt-6">
             <div className="grid md:grid-cols-3 gap-5">
-              <div className="md:col-span-1 bg-gradient-to-br from-turf to-emerald-800 text-white rounded-lg p-6 border border-emerald-700" data-section="bonus">
-                <div className="text-xs font-bold uppercase tracking-widest opacity-80">Wallet balance</div>
-                <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2" data-testid="wallet-balance">
-                  {money(user?.wallet_balance)}
-                </div>
-                {Number(user?.bonus_balance || 0) > 0 && (
-                  <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-turf/15 border border-turf/30 px-3 py-1.5" data-testid="bonus-chip">
-                    <Coins size={14} weight="fill" className="text-turf" />
-                    <span className="text-xs font-extrabold text-turf tabular">{money(user.bonus_balance)} bonus</span>
-                    <span className="text-[10px] font-bold uppercase tracking-widest text-turf/70">entry fees only</span>
+              <div className="md:col-span-1 relative overflow-hidden rounded-turf p-6 turf-air" data-section="bonus">
+                <img
+                  src={PROMO}
+                  alt=""
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-45"
+                />
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-tr from-ink-950 via-ink-950/70 to-transparent" />
+                <div className="relative">
+                  <div className="text-xs font-bold uppercase tracking-widest text-zinc-400">Wallet balance</div>
+                  <div className="font-heading text-5xl font-extrabold tabular tracking-tighter mt-2 text-white" data-testid="wallet-balance">
+                    {money(user?.wallet_balance)}
                   </div>
-                )}
-                <Button
-                  onClick={() => setTopUpOpen(true)}
-                  disabled={!canTopUp}
-                  title={canTopUp ? "" : "The organiser has not set up a payment method yet"}
-                  className="mt-6 w-full bg-emerald-400 text-white hover:bg-emerald-300 font-bold rounded-md active:scale-95"
-                  data-testid="add-money-btn"
-                >
-                  <PlusCircle size={18} weight="bold" className="mr-1" /> Add money
-                </Button>
-                <Button
-                  disabled={(user?.wallet_balance || 0) <= 0}
-                  onClick={() => setWdOpen(true)}
-                  className="mt-3 w-full bg-white text-emerald-800 hover:bg-emerald-50 font-bold rounded-md active:scale-95"
-                  data-testid="request-withdrawal-btn"
-                >
-                  <CurrencyInr size={18} weight="bold" className="mr-1" /> Request withdrawal
-                </Button>
-                {!canTopUp && (
-                  <p className="text-[11px] text-emerald-100/80 mt-3" data-testid="topup-unavailable-note">
-                    Payments are being set up — adding money will appear here shortly.
-                  </p>
-                )}
+                  {Number(user?.bonus_balance || 0) > 0 && (
+                    <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-trophy/20 border border-trophy/50 px-3 py-1.5" data-testid="bonus-chip">
+                      <Coins size={14} weight="fill" className="text-trophy-light" />
+                      <span className="text-xs font-extrabold text-trophy-light tabular">{money(user.bonus_balance)} bonus</span>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-trophy-light/70">entry fees only</span>
+                    </div>
+                  )}
+                  <Button
+                    onClick={() => setTopUpOpen(true)}
+                    disabled={!canTopUp}
+                    title={canTopUp ? "" : "The organiser has not set up a payment method yet"}
+                    className="turf-join mt-6 w-full rounded-md border-0 active:scale-95"
+                    data-testid="add-money-btn"
+                  >
+                    <PlusCircle size={18} weight="bold" className="mr-1" /> Add money
+                  </Button>
+                  <Button
+                    disabled={(user?.wallet_balance || 0) <= 0}
+                    onClick={() => setWdOpen(true)}
+                    className="mt-3 w-full bg-white/10 border border-white/25 text-white hover:bg-white/20 font-bold rounded-md active:scale-95 disabled:opacity-40"
+                    data-testid="request-withdrawal-btn"
+                  >
+                    <CurrencyInr size={18} weight="bold" className="mr-1" /> Request withdrawal
+                  </Button>
+                  {!canTopUp && (
+                    <p className="text-[11px] text-zinc-400 mt-3" data-testid="topup-unavailable-note">
+                      Payments are being set up — adding money will appear here shortly.
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="md:col-span-2 space-y-5">
                 <TopupRequests items={topups} />
@@ -664,11 +676,11 @@ function QuickAction({ icon: Icon, label, hint, onClick, testid }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center justify-between gap-2 rounded-2xl border border-ink-line bg-ink-card px-4 py-4 text-left hover:border-turf/50 active:scale-[0.98] transition-all"
+      className="flex items-center justify-between gap-2 rounded-2xl border border-ink-line bg-white shadow-card px-4 py-4 text-left hover:border-turf/50 active:scale-[0.98] transition-all"
       data-testid={testid}
     >
       <span className="min-w-0">
-        <span className="flex items-center gap-2 font-heading text-[15px] font-extrabold text-zinc-50 truncate">
+        <span className="flex items-center gap-2 font-heading text-[15px] font-extrabold text-zinc-950 truncate">
           <Icon size={17} weight="fill" className="text-turf shrink-0" /> {label}
         </span>
         <span className="block text-[11px] text-zinc-500 mt-0.5 truncate">{hint}</span>
@@ -686,8 +698,23 @@ function ContestCard({ contest, onJoin, onFantasy }) {
     const text = `🏏 Join "${contest.title}" on PitchPlay!\nEntry ₹${contest.entry_fee} · Prize pool ₹${contest.prize_pool}\n${window.location.origin}/?contest=${contest.id}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener");
   };
+  const mega = Number(contest.max_participants || 0) >= 1000;
   return (
-    <div className="group bg-white border border-zinc-200 rounded-lg p-6 hover:border-emerald-400 hover:-translate-y-1 transition-all duration-200" data-testid={`contest-card-${contest.id}`}>
+    <div className="group bg-white border border-zinc-200 rounded-turf shadow-card overflow-hidden hover:border-neon/40 transition-colors" data-testid={`contest-card-${contest.id}`}>
+      {/* Mega contests wear the mowed ground band: the pot is the headline. */}
+      {mega && (
+        <div className="turf-ground m-4 mb-0 flex items-center justify-between px-4 py-3" data-testid={`prize-band-${contest.id}`}>
+          <div>
+            <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/75">Prize pool</div>
+            <div className="turf-num turf-money text-[22px] leading-tight">{shortMoney(contest.prize_pool)}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/75">Spots</div>
+            <div className="turf-num text-[16px] leading-tight">{Number(contest.max_participants).toLocaleString("en-IN")}</div>
+          </div>
+        </div>
+      )}
+      <div className="p-6">
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -730,7 +757,7 @@ function ContestCard({ contest, onJoin, onFantasy }) {
             <span className="text-zinc-500">{contest.max_participants.toLocaleString("en-IN")} spots</span>
             <span className="ml-auto text-zinc-500">{fillPct(contest)}% full</span>
           </div>
-          <div className="mt-1.5 h-1.5 rounded-full bg-white/10 overflow-hidden" role="presentation">
+          <div className="mt-1.5 h-1.5 rounded-full bg-zinc-200 overflow-hidden" role="presentation">
             <div className="h-full rounded-full bg-turf transition-[width] duration-500" style={{ width: `${Math.max(fillPct(contest), 2)}%` }} data-testid={`spots-bar-${contest.id}`} />
           </div>
         </div>
@@ -740,9 +767,9 @@ function ContestCard({ contest, onJoin, onFantasy }) {
           <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Entry fee</div>
           <div className="font-heading text-xl font-extrabold text-zinc-950 tabular mt-1">{money(contest.entry_fee)}</div>
         </div>
-        <div className="bg-turf-red-soft border border-turf/25 rounded p-3">
-          <div className="text-[10px] font-bold uppercase tracking-widest text-turf">Prize pool</div>
-          <CountUp value={contest.prize_pool} fromZero duration={1100} className="block font-heading text-xl font-extrabold text-turf mt-1" />
+        <div className="bg-trophy-soft border border-trophy/30 rounded p-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-trophy-dark">Prize pool</div>
+          <CountUp value={contest.prize_pool} fromZero duration={1100} className="block font-heading text-xl font-extrabold text-zinc-950 mt-1" />
         </div>
       </div>
       {contest.prize_breakdown?.length > 0 && (
@@ -765,14 +792,14 @@ function ContestCard({ contest, onJoin, onFantasy }) {
           <Button
             disabled={closed}
             onClick={onFantasy}
-            className="rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95"
+            className="turf-join rounded-full border-0 active:scale-95"
             data-testid={`fantasy-build-btn-${contest.id}`}
           >
             <Flag size={16} weight="fill" className="mr-1" /> {closed ? "Contest closed" : "Build XI & join"}
           </Button>
         ) : contest.external_link ? (
           <a href={contest.external_link} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold px-4 py-2 active:scale-95 transition-transform"
+            className="turf-join inline-flex items-center gap-2 rounded-full border-0 px-4 py-2 active:scale-95 transition-transform"
             data-testid={`card-play-link-${contest.id}`}>
             <ArrowSquareOut size={16} weight="bold" /> Open contest
           </a>
@@ -784,12 +811,13 @@ function ContestCard({ contest, onJoin, onFantasy }) {
         <Button
           disabled={closed}
           onClick={onJoin}
-          className="rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95"
+          className="turf-join rounded-full border-0 active:scale-95"
           data-testid={`join-btn-${contest.id}`}
         >
           Join contest
         </Button>
         )}
+      </div>
       </div>
     </div>
   );
@@ -952,7 +980,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
             )}
           </div>
           {canWallet ? (
-            <Button disabled={walletPaying} onClick={payFromWallet} className="shrink-0 bg-turf hover:bg-turf-red-dark font-bold rounded-full active:scale-95" data-testid="pay-from-wallet-btn">
+            <Button disabled={walletPaying} onClick={payFromWallet} className="turf-join shrink-0 rounded-full border-0 active:scale-95" data-testid="pay-from-wallet-btn">
               <Lightning size={16} weight="fill" className="mr-1" /> {walletPaying ? "Paying..." : `Pay ${money(fee)}`}
             </Button>
           ) : (
@@ -981,7 +1009,7 @@ function JoinDialog({ contest, team, onClose, config, onDone, onPaid, walletBala
                   <button type="button" onClick={copyUpi} className="p-1.5 rounded hover:bg-emerald-100 text-emerald-800" title="Copy" data-testid="copy-upi-btn"><Copy size={16} weight="bold" /></button>
                 </div>
                 {config.payee_name && <div className="text-xs text-emerald-800">{config.payee_name}</div>}
-                <a href={upiLink} className="mt-2 inline-flex items-center gap-1.5 bg-turf hover:bg-turf-red-dark text-white text-xs font-bold px-3 py-1.5 rounded-md" data-testid="pay-upi-link">
+                <a href={upiLink} className="mt-2 inline-flex items-center gap-1.5 bg-ink-950 hover:bg-ink-800 text-white text-xs font-bold px-3 py-1.5 rounded-md" data-testid="pay-upi-link">
                   <DeviceMobile size={14} weight="bold" /> Pay {money(contest.entry_fee)} in UPI app
                 </a>
               </div>
@@ -1342,20 +1370,20 @@ function TopupRequests({ items }) {
 
 function SuccessBanner({ entry, onClose }) {
   return (
-    <div className="relative overflow-hidden mb-6 rounded-lg border border-turf bg-turf text-white p-6 sm:p-7 animate-in fade-in slide-in-from-top-2 duration-500" data-testid="success-banner">
-      <Confetti size={140} weight="duotone" className="absolute -right-6 -top-8 text-emerald-300/40 pointer-events-none" />
-      <button type="button" onClick={onClose} className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-white/15" aria-label="Dismiss" data-testid="success-banner-close"><X size={18} weight="bold" /></button>
+    <div className="relative overflow-hidden mb-6 rounded-turf border border-turf-red-dark bg-gradient-to-br from-turf-fire via-turf to-turf-red-dark text-white p-6 sm:p-7 shadow-lift animate-in fade-in slide-in-from-top-2 duration-500" data-testid="success-banner">
+      <Confetti size={140} weight="duotone" className="absolute -right-6 -top-8 text-white/25 pointer-events-none" />
+      <button type="button" onClick={() => onClose()} className="absolute top-3 right-3 p-1.5 rounded-full hover:bg-white/15" aria-label="Dismiss" data-testid="success-banner-close"><X size={18} weight="bold" /></button>
       <div className="flex flex-col sm:flex-row sm:items-center gap-5 relative">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-emerald-100">
+          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-white/80">
             <ShieldCheck size={16} weight="fill" /> Payment confirmed{entry.payment_method === "wallet" ? " · Paid from wallet" : ""}
           </div>
           <h2 className="font-heading text-3xl sm:text-4xl font-extrabold tracking-tighter mt-2">You're in! 🎉</h2>
-          <p className="text-emerald-50 mt-1">Your spot in <b>{entry.contest_title}</b> is locked. Head over and set up your team before the match starts.</p>
+          <p className="text-white/90 mt-1">Your spot in <b>{entry.contest_title}</b> is locked. Head over and set up your team before the match starts.</p>
         </div>
         {entry.external_link && (
           <a href={entry.external_link} target="_blank" rel="noopener noreferrer"
-            className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-white text-emerald-800 hover:bg-emerald-50 font-extrabold px-6 py-3 active:scale-95 transition-transform"
+            className="shrink-0 inline-flex items-center justify-center gap-2 rounded-full bg-white text-zinc-950 hover:bg-zinc-100 font-extrabold px-6 py-3 active:scale-95 transition-transform"
             data-testid="success-banner-play-link">
             <ArrowSquareOut size={18} weight="bold" /> Open contest
           </a>
@@ -1368,18 +1396,18 @@ function SuccessBanner({ entry, onClose }) {
 function WinnersBoard({ winners }) {
   if (!winners.length) return null;
   return (
-    <div className="mb-6 bg-zinc-950 text-white rounded-lg p-5 border border-zinc-800" data-testid="winners-board">
-      <div className="flex items-center gap-2 text-turf text-xs font-bold uppercase tracking-widest">
+    <div className="turf-air rounded-turf mb-6 p-5" data-testid="winners-board">
+      <div className="flex items-center gap-2 text-trophy-light text-xs font-bold uppercase tracking-widest">
         <Trophy size={16} weight="fill" /> Recent winners
       </div>
       <div className="mt-3 grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {winners.slice(0, 6).map((w) => (
-          <div key={w.id} className="bg-zinc-900 border border-zinc-800 rounded-md px-4 py-3 flex items-center justify-between" data-testid={`winner-${w.id}`}>
+          <div key={w.id} className="bg-ink-900 border border-ink-800 rounded-md px-4 py-3 flex items-center justify-between" data-testid={`winner-${w.id}`}>
             <div className="min-w-0">
-              <div className="font-heading font-bold truncate">{w.user_name}</div>
+              <div className="font-heading font-bold text-zinc-50 truncate">{w.user_name}</div>
               <div className="text-xs text-zinc-400 truncate">{w.contest_title}</div>
             </div>
-            <CountUp value={w.winner_prize} fromZero duration={1100} className="font-heading font-extrabold text-turf ml-3" />
+            <CountUp value={w.winner_prize} fromZero duration={1100} className="font-heading font-extrabold text-trophy-light ml-3" />
           </div>
         ))}
       </div>

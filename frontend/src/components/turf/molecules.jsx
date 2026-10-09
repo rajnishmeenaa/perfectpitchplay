@@ -30,7 +30,7 @@ export function SportStrip({ sports = SPORTS, active = "cricket", onSelect, test
             data-active={on ? "true" : "false"}
             onClick={() => onSelect?.(s.id)}
             className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-[12px] font-extrabold uppercase tracking-wider transition-colors ${
-              on ? "bg-turf text-white border-turf shadow-glow-turf" : "bg-ink-card text-zinc-400 border-ink-line hover:border-turf/50 hover:text-zinc-200"
+              on ? "bg-turf text-white border-turf shadow-glow-turf" : "bg-white text-zinc-500 border-ink-line hover:border-turf/50 hover:text-zinc-900"
             }`}
           >
             <Glyph size={15} weight={on ? "fill" : "bold"} />
@@ -45,11 +45,11 @@ export function SportStrip({ sports = SPORTS, active = "cricket", onSelect, test
 
 /** Prize callout: what the winner takes, in the size it deserves. */
 export function PrizePool({ total, label = "Prize pool", tone = "trophy", testid = "prize-pool" }) {
-  const tones = { trophy: "text-trophy-light", brand: "text-turf", neon: "text-neon" };
+  const tones = { trophy: "text-trophy-dark", brand: "text-turf", neon: "text-neon" };
   return (
     <div data-testid={testid}>
       <TurfEyebrow>{label}</TurfEyebrow>
-      <div className={`turf-num text-[19px] leading-tight ${tones[tone] || tones.trophy}`}>{shortMoney(total)}</div>
+      <div className={`turf-num turf-money text-[19px] leading-tight ${tones[tone] || tones.trophy}`}>{shortMoney(total)}</div>
     </div>
   );
 }
@@ -84,7 +84,7 @@ export function MatchTile({ match, selected = false, onOpen, spotsHint, testid }
           <TurfEyebrow className="truncate">{[match.format, match.venue].filter(Boolean).join(" · ") || "Fixture"}</TurfEyebrow>
           <div className="mt-1.5 flex items-center gap-2">
             <TurfCrest name={match.team_a_name} short={match.team_a_short} tone={selected ? "brand" : "neutral"} />
-            <span className="font-heading text-[17px] font-extrabold uppercase tracking-tight text-zinc-50 leading-none">
+            <span className="font-heading text-[17px] font-extrabold uppercase tracking-tight text-zinc-950 leading-none">
               {(match.team_a_short || "?").slice(0, 5)}
               <span className="text-[11px] font-bold text-zinc-500 mx-1.5">vs</span>
               {(match.team_b_short || "?").slice(0, 5)}
@@ -117,67 +117,96 @@ export function MatchTile({ match, selected = false, onOpen, spotsHint, testid }
 /**
  * Contest row — the lobby's list item: fee, pool, spots left, entries per team.
  */
+/**
+ * Contest row — the lobby's list item, laid out as a money ledger: what the pot
+ * is, how many places are left and what it costs to enter, in that reading order.
+ * Mega contests (1000+ places) wear the mowed ground band, so the biggest pots on
+ * the list are identifiable without reading a single number.
+ */
 export function ContestRow({ contest, onJoin, joined = 0, testid }) {
   const total = Math.max(1, Number(contest.max_participants || 0));
   const filled = Math.min(total, Number(contest.participants_count ?? contest.joined_count ?? 0));
   const left = Math.max(0, total - filled);
   const pct = (filled / total) * 100;
   const closed = contest.status !== "open";
+  const prize = contest.first_prize ?? contest.winner_prize ?? contest.total_prize;
+  const mega = total >= 1000;
   const id = testid || `contest-row-${contest.id}`;
   return (
-    <TurfCard className="p-4" edge={closed ? "" : "brand"} testid={id}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="font-heading text-[15px] font-extrabold uppercase tracking-tight text-zinc-50 truncate" title={contest.title}>
-            {contest.title}
+    <TurfCard className="p-0 overflow-hidden" edge={closed ? "" : "brand"} testid={id}>
+      {mega && (
+        <div className="turf-ground m-3 mb-0 flex items-center justify-between px-3.5 py-2.5" data-testid={`${id}-band`}>
+          <div>
+            <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/75">Prize pool</div>
+            <div className="turf-num turf-money text-[20px] leading-tight">{shortMoney(contest.total_prize)}</div>
           </div>
-          <div className="text-[11px] text-zinc-500 mt-0.5 truncate">
-            {[contest.kind === "fantasy" ? "Fantasy" : "Classic", contest.match_title || contest.match_id ? "" : ""].filter(Boolean).join(" · ")}
-            {contest.description ? ` · ${contest.description}` : ""}
+          <div className="text-right">
+            <div className="text-[9px] font-extrabold uppercase tracking-[0.18em] text-white/75">Spots</div>
+            <div className="turf-num text-[15px] leading-tight">{total.toLocaleString("en-IN")}</div>
           </div>
         </div>
-        <div className="text-right shrink-0">
-          <TurfEyebrow>Winner takes</TurfEyebrow>
-          <TurfNum tone="trophy" className="text-[15px]">{shortMoney(contest.first_prize ?? contest.winner_prize ?? contest.total_prize)}</TurfNum>
-        </div>
-      </div>
+      )}
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <div>
-          <TurfEyebrow>Entry fee</TurfEyebrow>
-          <TurfNum className="text-[15px] text-turf">{money(contest.entry_fee)}</TurfNum>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="font-heading text-[15px] font-extrabold uppercase tracking-tight text-zinc-950 truncate" title={contest.title}>
+              {contest.title}
+            </div>
+            <div className="text-[11px] text-zinc-500 mt-0.5 truncate">
+              {[contest.kind === "fantasy" ? "Fantasy" : "Classic"].filter(Boolean).join(" · ")}
+              {contest.description ? ` · ${contest.description}` : ""}
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <TurfEyebrow>Winner takes</TurfEyebrow>
+            <TurfNum tone="trophy" className="text-[15px]">{shortMoney(prize)}</TurfNum>
+          </div>
         </div>
-        <div>
-          <TurfEyebrow>Total pool</TurfEyebrow>
-          <TurfNum tone="trophy" className="text-[15px]">{shortMoney(contest.total_prize)}</TurfNum>
-        </div>
-        <div className="text-right">
-          <TurfEyebrow>{contest.expires_at ? "Closes in" : "Status"}</TurfEyebrow>
-          {contest.expires_at && !closed ? (
-            <TurfCountdown iso={contest.expires_at} overLabel="Closed" compact testid={`${id}-cd`} />
-          ) : (
-            <TurfChip skin={closed ? "neutral" : "neon"}>{closed ? contest.status : "Open"}</TurfChip>
+
+        <div className={`mt-3 grid ${mega ? "grid-cols-2" : "grid-cols-3"}`}>
+          {!mega && (
+            <div>
+              <TurfEyebrow>Total pool</TurfEyebrow>
+              <TurfNum tone="trophy" className="text-[15px]">{shortMoney(contest.total_prize)}</TurfNum>
+            </div>
           )}
+          <div className="border-l border-ink-line pl-3">
+            <TurfEyebrow>{mega ? "Entry fee" : "Spots left"}</TurfEyebrow>
+            {mega ? (
+              <TurfNum tone="brand" className="text-[15px]">{money(contest.entry_fee)}</TurfNum>
+            ) : (
+              <TurfNum tone={left === 0 ? "brand" : ""} className="text-[15px]">{left.toLocaleString("en-IN")}</TurfNum>
+            )}
+          </div>
+          <div className="border-l border-ink-line pl-3">
+            <TurfEyebrow>{contest.expires_at ? "Closes in" : "Status"}</TurfEyebrow>
+            {contest.expires_at && !closed ? (
+              <TurfCountdown iso={contest.expires_at} overLabel="Closed" compact testid={`${id}-cd`} />
+            ) : (
+              <div className="mt-0.5"><TurfChip skin={closed ? "neutral" : "neon"}>{closed ? contest.status : "Open"}</TurfChip></div>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="mt-3">
-        <TurfMeter value={filled} max={total} tone={left === 0 ? "brand" : pct > 75 ? "warn" : "neon"} testid={`${id}-meter`} />
-        <div className="flex items-center justify-between mt-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1">
-            <Users size={11} weight="bold" /> {left === 0 ? "Contest full" : `${left.toLocaleString("en-IN")} spots left`}
-          </span>
-          <button
-            type="button"
-            onClick={() => onJoin?.(contest)}
-            disabled={closed || left === 0}
-            data-testid={`${id}-join`}
-            className={`rounded-full px-4 py-1.5 text-[12px] font-extrabold uppercase tracking-wider transition-transform active:scale-95 disabled:opacity-45 ${
-              joined > 0 ? "bg-neon/15 border border-neon/40 text-neon" : "turf-cta border-0"
-            }`}
-          >
-            {joined > 0 ? `Joined ${joined}` : closed ? "Closed" : "Join"}
-          </button>
+        <div className="mt-3">
+          <TurfMeter value={filled} max={total} tone={left === 0 ? "brand" : pct > 75 ? "warn" : "neon"} testid={`${id}-meter`} />
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 flex items-center gap-1">
+              <Users size={11} weight="bold" /> {left === 0 ? "Contest full" : `${left.toLocaleString("en-IN")} spots left`}
+            </span>
+            <button
+              type="button"
+              onClick={() => onJoin?.(contest)}
+              disabled={closed || left === 0}
+              data-testid={`${id}-join`}
+              className={`min-h-[36px] rounded-full px-5 py-2 text-[12px] border-0 transition-transform active:scale-95 disabled:opacity-45 ${
+                joined > 0 ? "bg-neon/10 border border-neon/40 text-neon font-extrabold uppercase tracking-wider" : "turf-join"
+              }`}
+            >
+              {joined > 0 ? `Joined ${joined}` : closed ? "Closed" : "Join"}
+            </button>
+          </div>
         </div>
       </div>
     </TurfCard>
@@ -196,7 +225,7 @@ export function PlayerTile({ player, picked = false, out = false, disabled = fal
   return (
     <div
       className={`flex items-center gap-2 px-3 py-2 border-b border-ink-line/70 transition-colors ${
-        picked ? "bg-turf/10" : out ? "bg-ink-900 opacity-70" : "hover:bg-ink-800"
+        picked ? "bg-turf/5" : out ? "bg-zinc-100 opacity-70" : "hover:bg-zinc-50"
       }`}
       data-testid={testid || `player-tile-${player.id}`}
       data-out={out ? "true" : "false"}
@@ -214,7 +243,7 @@ export function PlayerTile({ player, picked = false, out = false, disabled = fal
           {picked ? "✓" : "+"}
         </span>
         <span className="min-w-0 flex-1">
-          <span className={`block text-[13px] font-bold truncate ${out ? "text-zinc-500 line-through decoration-turf/60" : "text-zinc-50"}`}>
+          <span className={`block text-[13px] font-bold truncate ${out ? "text-zinc-500 line-through decoration-turf/60" : "text-zinc-950"}`}>
             {player.name}
           </span>
           <span className="flex items-center gap-1.5 mt-0.5">

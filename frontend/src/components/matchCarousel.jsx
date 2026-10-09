@@ -6,7 +6,7 @@ function TeamBadge({ name, short, flip = false }) {
   const letter = ((name || short || "?").trim().charAt(0) || "?").toUpperCase();
   return (
     <span
-      className={`h-6 w-6 shrink-0 rounded-md grid place-items-center text-[11px] font-extrabold border ${flip ? "bg-turf/15 border-turf/40 text-turf" : "bg-white/5 border-ink-line text-zinc-200"}`}
+      className={`h-6 w-6 shrink-0 rounded-md grid place-items-center text-[11px] font-extrabold border ${flip ? "bg-turf/10 border-turf/30 text-turf" : "bg-zinc-100 border-ink-line text-zinc-700"}`}
       aria-hidden="true"
     >
       {letter}
@@ -67,7 +67,7 @@ export function MatchCarousel({ matches, selectedId, onSelect }) {
             key={m.id}
             type="button"
             onClick={() => onSelect(on ? null : m.id)}
-            className={`snap-start shrink-0 w-[200px] rounded-2xl border px-4 py-3 text-left transition-colors ${on ? "border-turf bg-turf/10" : "border-ink-line bg-ink-card hover:border-turf/40"}`}
+            className={`snap-start shrink-0 w-[200px] rounded-2xl border px-4 py-3 text-left transition-colors shadow-card ${on ? "border-turf bg-turf/5" : "border-ink-line bg-white hover:border-turf/40"}`}
             data-testid={`match-card-${m.id}`}
             data-selected={on ? "true" : "false"}
           >
@@ -76,16 +76,16 @@ export function MatchCarousel({ matches, selectedId, onSelect }) {
             </div>
             <div className="mt-2 flex items-center gap-1.5">
               <TeamBadge name={m.team_a_name} short={m.team_a_short} />
-              <span className="font-heading text-lg font-extrabold uppercase tracking-tight text-zinc-50 truncate">
+              <span className="font-heading text-lg font-extrabold uppercase tracking-tight text-zinc-950 truncate">
                 {(m.team_a_short || "?").slice(0, 4)}
-                <span className="text-[11px] font-bold text-zinc-500 mx-1">v</span>
+                <span className="text-[11px] font-bold text-zinc-400 mx-1">v</span>
                 {(m.team_b_short || "?").slice(0, 4)}
               </span>
               <TeamBadge name={m.team_b_name} short={m.team_b_short} flip />
             </div>
             <div className="mt-2 text-[12px] font-bold tabular truncate" data-testid={`match-when-${m.id}`}>
               {live ? (
-                <span className="inline-flex items-center gap-1.5 text-red-400">
+                <span className="inline-flex items-center gap-1.5 text-turf">
                   <Broadcast size={12} weight="fill" /> LIVE NOW
                 </span>
               ) : m.locked ? (

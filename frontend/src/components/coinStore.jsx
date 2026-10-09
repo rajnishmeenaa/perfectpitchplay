@@ -165,24 +165,24 @@ export function CoinStore({ coinCfg, onReload }) {
 
       {/* PitchPlus */}
       {plusPack && (
-        <div className="bg-ink border border-ink-line rounded-lg p-5 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="plus-card">
-          <div className="h-12 w-12 shrink-0 rounded-full bg-turf/15 border border-turf/40 grid place-items-center">
-            <Crown size={24} weight="duotone" className="text-turf" />
+        <div className="turf-air rounded-lg p-5 flex flex-col sm:flex-row sm:items-center gap-4" data-testid="plus-card">
+          <div className="h-12 w-12 shrink-0 rounded-full bg-trophy/20 border border-trophy/50 grid place-items-center">
+            <Crown size={24} weight="duotone" className="text-trophy-light" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="font-heading text-lg font-extrabold uppercase tracking-tight text-zinc-50">PitchPlus</span>
-              <Sparkle size={14} weight="fill" className="text-turf" />
+              <span className="font-heading text-lg font-extrabold uppercase tracking-tight text-trophy-light">PitchPlus</span>
+              <Sparkle size={14} weight="fill" className="text-trophy-light" />
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
               {coinCfg.plus_discount_pct}% off every coin entry · {coinCfg.plus_days} days · pays for itself fast
             </p>
-            {coinCfg.plus_active && <div className="text-[11px] font-bold text-emerald-400 mt-1">Active{coinCfg.plus_until ? ` until ${new Date(coinCfg.plus_until).toLocaleDateString("en-IN")}` : ""}</div>}
+            {coinCfg.plus_active && <div className="text-[11px] font-bold text-neon-air mt-1">Active{coinCfg.plus_until ? ` until ${new Date(coinCfg.plus_until).toLocaleDateString("en-IN")}` : ""}</div>}
           </div>
           <Button
             disabled={playMode || coinCfg.plus_active || busy === plusPack.id}
             onClick={() => buy(plusPack)}
-            className="shrink-0 bg-turf hover:bg-turf-red-dark text-white font-extrabold rounded-full active:scale-95"
+            className="shrink-0 bg-trophy hover:bg-trophy-light text-ink-950 font-extrabold rounded-full active:scale-95"
             data-testid="buy-plus-btn"
           >
             <Crown size={16} weight="fill" className="mr-1" />

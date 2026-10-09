@@ -141,7 +141,7 @@ export function SeasonLadder() {
   }, []);
 
   if (!data) return null;
-  const medal = (rank) => (rank === 1 ? "bg-turf text-ink" : rank === 2 ? "bg-zinc-300 text-ink" : rank === 3 ? "bg-orange-300 text-ink" : "bg-zinc-100 text-zinc-600");
+  const medal = (rank) => (rank === 1 ? "bg-turf text-white" : rank === 2 ? "bg-zinc-200 text-zinc-800" : rank === 3 ? "bg-orange-300 text-ink-950" : "bg-zinc-100 text-zinc-600");
 
   return (
     <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden" data-testid="season-ladder">

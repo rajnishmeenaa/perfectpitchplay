@@ -7,6 +7,10 @@
  * The same values exist as Tailwind tokens in tailwind.config.js (turf / ink /
  * neon / trophy). This module exists for the cases where JS needs the raw value:
  * SVG fills, native splash bars, push-notification accents and canvas draws.
+ *
+ * v1.8 direction: brand red on a cool near-white canvas, pitch green as the
+ * entry action, gold for prize moments, and a dark "air" scale for the panels
+ * that stay broadcast-dark (live centre, winners board).
  */
 
 export const TURF = {
@@ -16,19 +20,31 @@ export const TURF = {
   redDeep: "#8E0C12",
   fire: "#FF4B52",
   ember: "#FF8A8F",
-  // Surfaces
-  ink: "#0A0C11",
-  inkSoft: "#0E1117",
-  inkCard: "#12151C",
-  inkLine: "#272E3A",
-  inkMuted: "#93A0B0",
-  // Status
-  neon: "#2BF57C",
-  neonBright: "#6BFFA8",
-  neonDeep: "#0B7A43",
+  // Surfaces (light)
+  canvas: "#F3F5F8",
+  card: "#FFFFFF",
+  soft: "#F1F4F8",
+  line: "#E4E8EE",
+  ink: "#0B0E13",
+  inkSoft: "#F1F4F8",
+  inkCard: "#FFFFFF",
+  inkLine: "#E4E8EE",
+  inkMuted: "#666F7B",
+  // Entry action / positive
+  neon: "#0A7A44",
+  neonBright: "#16A34A",
+  neonAir: "#4ADE80",
+  neonDeep: "#065C33",
+  // Prize
   trophy: "#F2B632",
   trophyLight: "#FFD35C",
-  trophyDark: "#B97F14",
+  trophyDark: "#9A6708",
+  // Broadcast-dark panels
+  air: "#0B0E13",
+  airRaised: "#141A21",
+  airLine: "#262E38",
+  airText: "#E7ECF3",
+  airMuted: "#9AA4B1",
 };
 
 /** Colour the OS chrome with (status bar, notification accent). */

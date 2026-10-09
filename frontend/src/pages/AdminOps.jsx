@@ -302,7 +302,7 @@ export default function AdminOps() {
               className="mt-1.5" data-testid="bonus-note" />
           </div>
           <div className="lg:col-span-4">
-            <Button type="submit" disabled={busy} className="rounded-md bg-turf text-ink hover:bg-turf-fire font-extrabold" data-testid="bonus-grant-btn">
+            <Button type="submit" disabled={busy} className="rounded-md bg-turf text-white hover:bg-turf-fire font-extrabold" data-testid="bonus-grant-btn">
               Grant bonus
             </Button>
           </div>
@@ -332,7 +332,7 @@ export default function AdminOps() {
             </select>
           </div>
           <div className="flex items-end">
-            <Button type="submit" disabled={busy} className="rounded-md bg-turf text-ink hover:bg-turf-fire font-extrabold w-full" data-testid="cast-send-btn">
+            <Button type="submit" disabled={busy} className="rounded-md bg-turf text-white hover:bg-turf-fire font-extrabold w-full" data-testid="cast-send-btn">
               <PaperPlaneRight size={15} weight="bold" className="mr-1.5" /> {busy ? "Sending…" : "Send"}
             </Button>
           </div>

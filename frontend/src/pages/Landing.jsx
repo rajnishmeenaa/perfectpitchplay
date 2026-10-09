@@ -83,7 +83,7 @@ export default function Landing() {
             </button>
             <Button
               onClick={() => setMode("signup")}
-              className="rounded-full bg-turf hover:bg-turf-fire text-ink font-bold active:scale-95 transition-transform shadow-glow-turf"
+              className="rounded-full bg-turf hover:bg-turf-fire text-white font-bold active:scale-95 transition-transform shadow-glow-turf"
               data-testid="nav-signup-btn"
             >
               Sign up
@@ -97,10 +97,9 @@ export default function Landing() {
         <div className="lg:col-span-3">
           <div className="relative rounded-2xl overflow-hidden border border-zinc-200 shadow-card">
             <img src={HERO} alt="Stadium under lights" className="w-full h-[420px] object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
-            <div className="absolute inset-0 bg-turf/20 mix-blend-color" />
-            <div className="absolute inset-0 bg-gradient-to-br from-turf/25 via-transparent to-neon/10" />
-            <div className="grain absolute inset-0 opacity-20 mix-blend-overlay pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/55 to-ink-950/10" />
+            <div className="absolute inset-0 bg-gradient-to-r from-turf-red-deep/40 via-transparent to-transparent" />
+            <div className="grain absolute inset-0 opacity-15 mix-blend-overlay pointer-events-none" />
             <div className="absolute inset-0 p-10 flex flex-col justify-end">
               <span className="inline-flex items-center gap-2 self-start bg-turf text-white text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full shadow-glow-turf">
                 <Sparkle weight="fill" size={12} /> Live Match Centre
@@ -135,7 +134,7 @@ export default function Landing() {
             <div className="grid sm:grid-cols-3 gap-4 mt-3">
               {STEPS.map(({ icon: Icon, title, body }, i) => (
                 <div key={title} className="relative glass rounded-xl p-5 overflow-hidden">
-                  <div className="absolute -right-4 -top-6 font-heading text-[92px] font-extrabold text-white/5 select-none tabular">{i + 1}</div>
+                  <div className="absolute -right-4 -top-6 font-heading text-[92px] font-extrabold text-zinc-900/5 select-none tabular">{i + 1}</div>
                   <Icon size={26} weight="duotone" className="text-neon" />
                   <div className="font-heading font-bold text-zinc-900 mt-3">{title}</div>
                   <div className="text-sm text-zinc-500 mt-1 leading-relaxed">{body}</div>
@@ -165,14 +164,14 @@ export default function Landing() {
               <div className="ml-auto flex items-center rounded-full border border-zinc-200 p-0.5" data-testid="auth-method-switch">
                 <button
                   onClick={() => setMethod("password")}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "password" ? "bg-ink-card text-turf" : "text-zinc-500"}`}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "password" ? "bg-ink-900 text-white" : "text-zinc-500"}`}
                   data-testid="method-password"
                 >
                   Password
                 </button>
                 <button
                   onClick={() => setMethod("otp")}
-                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "otp" ? "bg-ink-card text-turf" : "text-zinc-500"}`}
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-widest transition-colors ${method === "otp" ? "bg-ink-900 text-white" : "text-zinc-500"}`}
                   data-testid="method-otp"
                 >
                   OTP
@@ -241,7 +240,7 @@ export default function Landing() {
               <Button
                 type="submit"
                 disabled={busy}
-                className="w-full h-11 bg-turf hover:bg-turf-fire text-ink font-bold text-base rounded-md active:scale-[0.98] transition-transform shadow-glow-turf"
+                className="w-full h-11 bg-turf hover:bg-turf-fire text-white font-bold text-base rounded-md active:scale-[0.98] transition-transform shadow-glow-turf"
                 data-testid="auth-submit-btn"
               >
                 {busy ? "Please wait..." : mode === "login" ? "Enter contest lobby" : "Create my account"}
@@ -278,7 +277,7 @@ export default function Landing() {
       <footer className="border-t border-zinc-200 bg-white/90">
         <div className="max-w-7xl mx-auto px-6 py-6 flex justify-between text-sm text-zinc-500">
           <span>© PitchPlay — Play responsibly. 18+ only.</span>
-          <span className="font-mono">v1.5.0</span>
+          <span className="font-mono">v1.8.0</span>
         </div>
       </footer>
     </div>

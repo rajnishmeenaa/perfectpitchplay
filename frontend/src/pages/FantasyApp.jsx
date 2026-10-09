@@ -6,7 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { toast } from "sonner";
 import { isNative, notificationPermission, syncReminders } from "../lib/notifications";
 import { XiChip, XiBoard, XiAlerts } from "../components/xiNews";
-import { PitchField, ChatThread } from "../components/turf";
+import { PitchField, ChatThread, TURF } from "../components/turf";
 import { Flag, Users, Lock, Trophy, ChartBar, Info, PencilSimple, Trash, Check, X, Clock, Plus, ShieldCheck, Medal, Broadcast, Sparkle, ShareNetwork, Wallet, ArrowsClockwise, CaretUp, CaretDown, ChartLine, Star, Eye, WarningCircle, CheckCircle, ArrowsLeftRight, ChatsCircle } from "@phosphor-icons/react";
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN")}`;
@@ -305,9 +305,9 @@ function RunRateChart({ series }) {
     <div className="mt-3" data-testid="run-rate-chart">
       <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Runs and wickets per over</div>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-24 bg-zinc-900 rounded-md" role="img" aria-label="run rate graph">
-        <polyline points={line} fill="none" stroke="#34d399" strokeWidth="2.5" />
+        <polyline points={line} fill="none" stroke={TURF.neonAir} strokeWidth="2.5" />
         {series.map((p, i) => (Number(p.wickets) ? (
-          <circle key={`w${i}`} cx={x(i)} cy={y(Number(p.wickets), maxWk)} r="3.5" fill="#f87171" />
+          <circle key={`w${i}`} cx={x(i)} cy={y(Number(p.wickets), maxWk)} r="3.5" fill={TURF.fire} />
         ) : null))}
       </svg>
       <div className="flex justify-between text-[10px] text-zinc-500 tabular mt-1">
@@ -416,7 +416,7 @@ function LiveCentre({ match }) {
           <div className="flex gap-1.5 mt-4">
             {views.map(({ key, label, icon: Icon }) => (
               <button key={key} type="button" onClick={() => setView(key)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${view === key ? "bg-turf text-zinc-950" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${view === key ? "bg-turf text-white" : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"}`}
                 data-testid={`live-view-${key}`}>
                 <Icon size={13} weight="bold" /> {label}
               </button>
@@ -707,7 +707,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
               <button key={key} type="button" onClick={() => setView(key)}
                 data-testid={`view-${key}`}
                 className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider transition-colors ${
-                  view === key ? "bg-turf text-white" : "text-zinc-400 hover:text-zinc-200"
+                  view === key ? "bg-turf text-white" : "text-zinc-500 hover:text-zinc-900"
                 }`}>
                 {label}
               </button>
@@ -833,7 +833,7 @@ function TeamBuilder({ match, players, byTeam, sides, myTeams, draft, setDraft, 
             </div>
           )}
 
-          <Button disabled={!ready || busy} onClick={save} className="mt-5 w-full rounded-full bg-turf hover:bg-turf-red-dark font-bold active:scale-95" data-testid="save-team-btn">
+          <Button disabled={!ready || busy} onClick={save} className="turf-cta mt-5 w-full rounded-full border-0 active:scale-95" data-testid="save-team-btn">
             {locked ? <><Lock size={16} weight="bold" className="mr-1" /> Teams locked</> : busy ? "Saving…" : <><Check size={16} weight="bold" className="mr-1" /> {editingId ? "Update team" : "Save team"}</>}
           </Button>
           {!ready && !locked && ids.length > 0 && warnings.length === 0 && (
@@ -893,7 +893,7 @@ function Stat({ label, value, ok, testId }) {
 function PlayerRow({ player, picked, disabled, onToggle, onInfo }) {
   const live = player.points != null && player.points !== 0;
   return (
-    <div className={`flex items-center gap-1 px-4 py-1 transition-colors ${picked ? "bg-emerald-50" : "hover:bg-zinc-50"}`}>
+    <div className={`flex items-center gap-1 px-4 py-1 transition-colors ${picked ? "bg-turf/5" : "hover:bg-zinc-50"}`}>
       <button
         type="button"
         onClick={onToggle}
@@ -1252,9 +1252,9 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
       )}
 
       {myTeams.length > 0 && openOnes.length > 1 && (
-        <div className="bg-white border border-emerald-200 rounded-lg p-4" data-testid="multi-join-panel">
+        <div className="bg-white border border-neon/30 rounded-turf shadow-card p-4" data-testid="multi-join-panel">
           <div className="flex flex-wrap items-center gap-2">
-            <Wallet size={16} weight="fill" className="text-emerald-600" />
+            <Wallet size={16} weight="fill" className="text-neon" />
             <span className="text-sm font-extrabold text-zinc-900">Play one XI in several contests</span>
             <span className="text-[11px] text-zinc-500">
               {useCoins ? `paid with Pitch Coins (${Number(coinBal).toLocaleString("en-IN")} available)` : `paid from your available balance (${money(walletBalance)})`}
@@ -1263,7 +1263,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
           {coinsOn && (
             <div className="flex items-center gap-2 mt-2" data-testid="multi-pay-toggle">
               <button type="button" onClick={() => setPayWith("wallet")}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${payWith === "wallet" ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${payWith === "wallet" ? "bg-neon text-white border-neon" : "bg-white text-zinc-600 border-zinc-200 hover:border-emerald-400"}`}
                 data-testid="pay-wallet-toggle">
                 Wallet {money(walletBalance)}
               </button>
@@ -1296,7 +1296,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
               );
             })}
             <Button size="sm" disabled={!multiTeamId || !multiSel.length || busyMulti || activeCost > activeBalance} onClick={joinMany}
-              className="ml-auto rounded-full bg-turf hover:bg-turf-red-dark text-white font-bold active:scale-95" data-testid="multi-join-btn">
+              className="turf-join ml-auto rounded-full border-0 active:scale-95" data-testid="multi-join-btn">
               {busyMulti ? "Joining…" : useCoins ? `Join ${multiSel.length} · ${Number(activeCost).toLocaleString("en-IN")} coins` : `Join ${multiSel.length} · ${money(multiCost)}`}
             </Button>
           </div>
@@ -1317,7 +1317,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
         const max = Number(c.max_teams_per_user || 1);
         const closed = c.status !== "open" || !!match.locked;
         return (
-          <div key={c.id} className="bg-white border border-zinc-200 rounded-lg p-5 hover:border-emerald-300 transition-colors" data-testid={`fantasy-contest-${c.id}`}>
+          <div key={c.id} className="bg-white border border-zinc-200 rounded-turf shadow-card p-5 hover:border-neon/40 transition-colors" data-testid={`fantasy-contest-${c.id}`}>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -1326,14 +1326,14 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
                 </div>
                 {c.description && <p className="text-sm text-zinc-500 mt-1 line-clamp-2">{c.description}</p>}
                 <div className="flex flex-wrap gap-x-5 gap-y-1 mt-2 text-xs text-zinc-600 tabular">
-                  <span>Entry <b className="text-zinc-900">{money(c.entry_fee)}</b></span>
-                  <span>Prize pool <b className="text-orange-700">{money(c.prize_pool)}</b></span>
+                  <span>Entry <b className="turf-money text-zinc-950">{money(c.entry_fee)}</b></span>
+                  <span>Prize pool <b className="turf-money text-trophy-dark">{money(c.prize_pool)}</b></span>
                   <span>{c.participants_count || 0}/{c.max_participants} joined</span>
                   <span>{max} team{max === 1 ? "" : "s"} per user</span>
                 </div>
                 {(c.prize_breakdown || []).length > 0 && (
                   <div className="flex flex-wrap gap-x-3 mt-1.5 text-[11px] text-zinc-500" data-testid={`f-prizes-${c.id}`}>
-                    {c.prize_breakdown.map((it) => <span key={it.rank}>Rank {it.rank}: <b className="text-orange-700">{money(it.amount)}</b></span>)}
+                    {c.prize_breakdown.map((it) => <span key={it.rank}>Rank {it.rank}: <b className="turf-money text-trophy-dark">{money(it.amount)}</b></span>)}
                   </div>
                 )}
               </div>
@@ -1349,7 +1349,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
                     const used = joined.includes(tm.id);
                     return (
                       <button key={tm.id} type="button" disabled={used || closed} onClick={() => setPicked({ ...picked, [c.id]: tm.id })}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-45 ${chosen === tm.id && !used ? "bg-turf text-white border-turf" : "bg-white text-zinc-700 border-zinc-200 hover:border-emerald-400"}`}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors disabled:opacity-45 ${chosen === tm.id && !used ? "bg-turf text-white border-turf" : "bg-white text-zinc-700 border-zinc-200 hover:border-neon/50"}`}
                         data-testid={`choose-team-${c.id}-${tm.id}`}>
                         {used ? `${tm.name} · joined` : `${tm.name} · ${tm.credits_used} cr`}
                       </button>
@@ -1366,7 +1366,7 @@ function FantasyContests({ contests, myTeams, match, config, walletBalance, coin
                   <Button
                     disabled={!team}
                     onClick={() => onJoinFantasy(c, { id: team.id, name: team.name, credits_used: team.credits_used })}
-                    className="rounded-full bg-orange-600 hover:bg-orange-700 text-white font-bold active:scale-95"
+                    className="turf-join rounded-full border-0 active:scale-95"
                     data-testid={`join-fantasy-${c.id}`}
                   >
                     <Trophy size={16} weight="fill" className="mr-1" /> Join · {money(c.entry_fee)}
@@ -1429,8 +1429,8 @@ function LeaderboardDialog({ contest, onClose }) {
 
         {!busy && rows.length > 0 && (
           <>
-            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2.5 mb-3 text-sm" data-testid="my-standing">
-              <span className="font-bold text-emerald-900">Your position</span>
+            <div className="flex items-center justify-between bg-turf/5 border border-turf/25 rounded-lg px-4 py-2.5 mb-3 text-sm" data-testid="my-standing">
+              <span className="font-bold text-turf">Your position</span>
               {mine ? (
                 <span className="text-emerald-900 tabular" data-testid="my-standing-rank">
                   Rank <b>#{mine.rank}</b> of {data?.contest?.live_entries || rows.length} · <b>{mine.points}</b> pts
@@ -1448,7 +1448,7 @@ function LeaderboardDialog({ contest, onClose }) {
                 const open = openRow === r.entry_id;
                 const prizeRow = (data?.contest?.prize_breakdown || []).find((p) => Number(p.rank) === r.rank);
                 return (
-                  <div key={r.entry_id} className={r.is_me ? "bg-emerald-50" : ""}>
+                  <div key={r.entry_id} className={r.is_me ? "bg-turf/5" : ""}>
                     <div className="flex items-center gap-3 px-4 py-2.5 text-sm" data-testid={`lb-row-${r.rank}`}>
                       <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-xs font-extrabold tabular ${r.rank === 1 ? "bg-amber-400 text-amber-950" : r.rank === 2 ? "bg-zinc-300 text-zinc-700" : r.rank === 3 ? "bg-orange-200 text-orange-800" : "bg-zinc-100 text-zinc-600"}`}>
                         {r.rank}

@@ -49,19 +49,19 @@ export function MoreMenu({ open, onClose, user, stats, entries, coins, onGo, onO
         type="button"
         aria-label="Close menu"
         onClick={onClose}
-        className={`absolute inset-0 bg-black/70 backdrop-blur-[2px] transition-opacity duration-200 ${open ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/45 backdrop-blur-[2px] transition-opacity duration-200 ${open ? "opacity-100" : "opacity-0"}`}
         data-testid="more-menu-scrim"
       />
       <aside
-        className={`absolute inset-y-0 left-0 w-full max-w-[380px] bg-ink border-r border-ink-line flex flex-col shadow-2xl transition-transform duration-200 ease-out ${open ? "translate-x-0" : "-translate-x-full"}`}
+        className={`absolute inset-y-0 left-0 w-full max-w-[380px] bg-white border-r border-ink-line flex flex-col shadow-2xl transition-transform duration-200 ease-out ${open ? "translate-x-0" : "-translate-x-full"}`}
       >
         {/* Identity row — same shape as the nav so the panel feels like a continuation */}
         <div className="px-5 py-5 flex items-center gap-3 border-b border-ink-line">
-          <div className="h-12 w-12 shrink-0 rounded-full bg-turf/15 border border-turf/40 flex items-center justify-center font-heading text-xl font-extrabold text-turf" data-testid="more-avatar">
+          <div className="h-12 w-12 shrink-0 rounded-full bg-turf/10 border border-turf/30 flex items-center justify-center font-heading text-xl font-extrabold text-turf" data-testid="more-avatar">
             {initial}
           </div>
           <button type="button" onClick={() => go("stats")} className="min-w-0 flex-1 flex items-center justify-between gap-2 text-left" data-testid="more-profile-row">
-            <span className="font-heading text-xl font-extrabold uppercase tracking-tight text-zinc-50 truncate">{name}</span>
+            <span className="font-heading text-xl font-extrabold uppercase tracking-tight text-zinc-950 truncate">{name}</span>
             <CaretRight size={18} weight="bold" className="text-zinc-500 shrink-0" />
           </button>
         </div>
@@ -108,7 +108,7 @@ export function MoreMenu({ open, onClose, user, stats, entries, coins, onGo, onO
           <button
             type="button"
             onClick={() => { onLogout(); onClose(); }}
-            className="flex-1 inline-flex items-center justify-center gap-2 rounded-md border border-ink-line bg-ink-card py-2.5 text-sm font-bold text-zinc-300 hover:text-red-400 hover:border-red-900 active:scale-[0.99] transition-colors"
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-md border border-ink-line bg-white py-2.5 text-sm font-bold text-zinc-700 hover:text-turf hover:border-turf/50 active:scale-[0.99] transition-colors"
             data-testid="more-logout"
           >
             <SignOut size={16} weight="bold" /> Sign out
@@ -120,7 +120,7 @@ export function MoreMenu({ open, onClose, user, stats, entries, coins, onGo, onO
 }
 
 function MenuGroup({ children }) {
-  return <div className="bg-ink-card border border-ink-line rounded-xl overflow-hidden">{children}</div>;
+  return <div className="bg-white border border-ink-line rounded-xl overflow-hidden shadow-card">{children}</div>;
 }
 
 function MenuRow({ icon: Icon, label, hint, value, onClick, testid }) {
@@ -128,18 +128,18 @@ function MenuRow({ icon: Icon, label, hint, value, onClick, testid }) {
     <button
       type="button"
       onClick={onClick}
-      className="w-full px-4 py-4 flex items-center gap-3.5 text-left hover:bg-white/5 active:bg-white/10 transition-colors border-b border-ink-line last:border-b-0"
+      className="w-full px-4 py-4 flex items-center gap-3.5 text-left hover:bg-zinc-50 active:bg-zinc-100 transition-colors border-b border-ink-line last:border-b-0"
       data-testid={testid}
     >
-      <Icon size={22} weight="duotone" className="text-zinc-300 shrink-0" />
+      <Icon size={22} weight="duotone" className="text-zinc-600 shrink-0" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-bold text-zinc-100 leading-tight">{label}</span>
+        <span className="block text-[15px] font-bold text-zinc-950 leading-tight">{label}</span>
         {hint && <span className="block text-[11px] text-zinc-500 mt-0.5 truncate">{hint}</span>}
       </span>
       {value != null && value !== "" && (
         <span className="shrink-0 text-xs font-extrabold text-turf tabular" data-testid={`${testid}-value`}>{value}</span>
       )}
-      <CaretRight size={16} weight="bold" className="text-zinc-600 shrink-0" />
+      <CaretRight size={16} weight="bold" className="text-zinc-400 shrink-0" />
     </button>
   );
 }
@@ -151,14 +151,14 @@ export function AvatarTrigger({ user, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-2.5 pl-1.5 pr-2.5 py-1.5 rounded-full hover:bg-white/5 active:scale-[0.98] transition-all"
+      className="flex items-center gap-2.5 pl-1.5 pr-2.5 py-1.5 rounded-full hover:bg-zinc-100 active:scale-[0.98] transition-all"
       data-testid="avatar-trigger"
       aria-label="Open account menu"
     >
-      <span className="h-9 w-9 shrink-0 rounded-full bg-turf/15 border border-turf/40 flex items-center justify-center font-heading text-base font-extrabold text-turf" data-testid="avatar-initial">
+      <span className="h-9 w-9 shrink-0 rounded-full bg-turf/10 border border-turf/30 flex items-center justify-center font-heading text-base font-extrabold text-turf" data-testid="avatar-initial">
         {name.charAt(0).toUpperCase()}
       </span>
-      <span className="hidden sm:block max-w-[150px] truncate font-heading text-sm font-extrabold uppercase tracking-tight text-zinc-100">{name}</span>
+      <span className="hidden sm:block max-w-[150px] truncate font-heading text-sm font-extrabold uppercase tracking-tight text-zinc-950">{name}</span>
       <CaretRight size={15} weight="bold" className="hidden sm:block text-zinc-500" />
     </button>
   );

@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="PitchPlay">
   <defs>
     <linearGradient id="turfTile" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#14181F"/>
-      <stop offset="1" stop-color="#0A0C11"/>
+      <stop offset="0" stop-color="#141A21"/>
+      <stop offset="1" stop-color="#0B0E13"/>
     </linearGradient>
     <linearGradient id="turfBall" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#FF4B52"/>
@@ -10,11 +10,11 @@
       <stop offset="1" stop-color="#8E0C12"/>
     </linearGradient>
   </defs>
-  <rect x="1" y="1" width="126" height="126" rx="28" fill="url(#turfTile)" stroke="#272E3A" stroke-width="2"/>
-  <path d="M18 98 L52 64" stroke="#2BF57C" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
-  <path d="M26 108 L64 70" stroke="#2BF57C" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
+  <rect x="1" y="1" width="126" height="126" rx="28" fill="url(#turfTile)" stroke="#262E38" stroke-width="2"/>
+  <path d="M18 98 L52 64" stroke="#4ADE80" stroke-width="7" stroke-linecap="round" opacity="0.9"/>
+  <path d="M26 108 L64 70" stroke="#4ADE80" stroke-width="4" stroke-linecap="round" opacity="0.45"/>
   <circle cx="80" cy="50" r="29" fill="url(#turfBall)"/>
-  <path d="M63 32 C73 44 73 56 65 68" stroke="#0A0C11" stroke-width="4" fill="none" stroke-linecap="round"/>
-  <path d="M98 32 C88 44 88 56 96 68" stroke="#0A0C11" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M63 32 C73 44 73 56 65 68" stroke="#0B0E13" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <path d="M98 32 C88 44 88 56 96 68" stroke="#0B0E13" stroke-width="4" fill="none" stroke-linecap="round"/>
   <rect x="20" y="112" width="88" height="5" rx="2.5" fill="#ED1B24" opacity="0.9"/>
 </svg>
